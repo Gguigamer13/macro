@@ -17,6 +17,8 @@ PADRAO: Dict[str, Any] = {
     "limit": 0,
     "x": 0,
     "y": 0,
+    "screen_x": 0,
+    "screen_y": 0,
     "hotkey_start": "F6",
     "hotkey_pick": "F7",
     "sempre_visivel": True,

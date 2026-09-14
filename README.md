@@ -9,9 +9,16 @@ instalar nada além do Python. Ele faz três coisas:
 | **Segurar botão** | Aperta o botão do mouse e mantém pressionado até você mandar parar. |
 | **Segurar + clique periódico** | Mantém o botão pressionado e, de tempos em tempos, solta e aperta de novo — ou seja, dá um clique sem largar de vez. |
 
-E, o mais importante: os cliques podem ir **direto para uma janela específica,
-em segundo plano**. O cursor não sai do lugar, então você continua usando o
-mouse normalmente enquanto o macro clica na outra janela.
+Os cliques podem ser entregues de três formas:
+
+| Onde clicar | Como funciona | O mouse fica livre? |
+|-------------|---------------|---------------------|
+| **Na posição atual do mouse** | O clique normal, onde o cursor estiver. | não |
+| **Em uma janela, em segundo plano** | A mensagem de clique vai direto para a janela; o cursor não sai do lugar. | sim |
+| **Em um ponto fixo da tela** | O mouse vai até o ponto, clica e volta sozinho para onde estava. | quase — ele pisca até o ponto a cada clique |
+
+O modo em segundo plano é o único que deixa o mouse totalmente livre, mas ele
+não funciona em jogos — veja a seção sobre isso mais abaixo.
 
 ## Como rodar
 
@@ -89,18 +96,25 @@ Aqui também ficam o botão do mouse (esquerdo, direito ou meio) e o campo
 
 - **Na posição atual do mouse** — o clique normal, igual a qualquer auto
   clicker: acontece onde o cursor estiver naquele momento.
-- **Em uma janela, em segundo plano** — é a opção que libera o seu mouse. O
-  clique é entregue direto para a janela alvo, sem mexer no cursor.
+- **Em uma janela, em segundo plano** — libera o seu mouse por completo. O
+  clique é entregue direto para a janela alvo, sem mexer no cursor. Não
+  funciona em jogos.
+- **Em um ponto fixo da tela** — o mouse vai até o ponto, clica e volta na
+  hora para onde estava. É o modo que funciona em jogos, com o jogo na frente.
 
-Um desenho ao lado das opções mostra a diferença entre as duas.
+Um desenho abaixo das opções mostra a diferença entre as três.
 
-### Aba **Janela** — qual janela e em que ponto
+### Aba **Ponto** — qual janela e em que lugar
 
 - Selecione a janela na lista (ela mostra o programa e o título), ou
 - Passe o mouse por cima do ponto exato onde você quer clicar e aperte **F7**.
   O programa descobre sozinho qual é a janela e guarda a posição do ponto
   *dentro* dela — se a janela for movida depois, o clique continua caindo no
   lugar certo.
+
+No modo **ponto fixo da tela** os campos X e Y são a posição na tela inteira, e
+o F7 captura direto onde o cursor estiver — não é preciso escolher janela
+nenhuma.
 
 Os campos **X** e **Y** aceitam ajuste manual, "Usar o centro da janela"
 preenche o meio da área útil, e **"Testar 1 clique"** manda um único clique
@@ -140,25 +154,48 @@ desenhados pelo próprio programa (Canvas do tkinter), sem imagens externas:
 - luz de status no rodapé (cinza parado, verde rodando, vermelho em erro);
 - marca d'água **powered by nova era** no rodapé.
 
+## Roblox, Minecraft e outros jogos
+
+**O modo em segundo plano não funciona no Roblox** — e não é defeito do macro.
+Jogos como Roblox, Minecraft, Fortnite e Valorant leem o mouse por *Raw Input*
+/ DirectInput, ou seja, pegam o movimento e o clique direto do driver do
+dispositivo. Mensagens de clique enviadas para a janela (que é o que o modo em
+segundo plano faz) simplesmente não existem para eles. O Roblox ainda tem o
+anti-cheat Hyperion, que bloqueia esse tipo de entrada de propósito.
+
+O programa reconhece os jogos mais comuns pelo nome do executável e avisa na
+tela antes de você perder tempo.
+
+**O que funciona nesses jogos:**
+
+1. Deixe o jogo **em janela** (não em tela cheia exclusiva) e **na frente**.
+2. Escolha **"Em um ponto fixo da tela"** na aba Destino.
+3. Na aba Ponto, passe o mouse no lugar que quer clicar e aperte **F7**.
+4. Aumente a **duração de cada clique** para 50–80 ms: muitos jogos ignoram
+   cliques curtos demais.
+5. Aperte **F6** para começar. O cursor vai piscar até o ponto a cada clique e
+   voltar sozinho.
+
+Se o jogo estiver em primeira pessoa, com o mouse preso na câmera, use
+**"Na posição atual do mouse"** — nesse caso o clique cai onde a mira estiver.
+
+Vale saber: automatizar cliques vai contra as regras de uso de vários jogos,
+Roblox incluído, e alguns detectam macros. A decisão de usar é sua, mas o
+risco de punição na conta existe e não tem como o programa evitar isso.
+
 ## Quando o clique em segundo plano não funciona
 
-O clique em segundo plano é entregue como uma mensagem do Windows
-(`PostMessage`) para a janela. A maioria dos programas de desktop, navegadores
-e jogos em janela aceita isso — mas nem todos:
+Fora dos jogos, o clique em segundo plano é entregue como uma mensagem do
+Windows (`PostMessage`) para a janela. A maioria dos programas de desktop e
+navegadores aceita, mas ainda existem casos que não:
 
-- **Jogos que leem o mouse por DirectInput/Raw Input** (a maioria dos jogos de
-  tiro e de ação, principalmente em tela cheia) ignoram mensagens e só
-  respondem ao mouse de verdade. Nesses casos use o modo "na posição atual do
-  mouse".
-- **Jogos com anti-cheat** costumam bloquear (e podem punir) qualquer
-  automação. Não use lá.
 - **Programas abertos como administrador** só aceitam mensagens de outro
   programa também administrador. Se o alvo roda elevado, abra o Auto Clicker
-  como administrador (botão direito no `iniciar.bat` → "Executar como
-  administrador").
+  como administrador (botão direito → "Executar como administrador").
 - **Janelas minimizadas** muitas vezes ignoram o clique — o programa avisa
   antes de começar. Deixe a janela aberta atrás das outras em vez de
   minimizada.
+- **Alguns programas** só reagem ao mouse de verdade, mesmo não sendo jogos.
 
 O botão "Testar 1 clique" existe justamente para você descobrir em qual desses
 casos está, em dois segundos, sem precisar adivinhar.

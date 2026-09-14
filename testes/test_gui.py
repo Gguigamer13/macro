@@ -133,6 +133,29 @@ class TesteInterface(unittest.TestCase):
         self.assertEqual(str(self.app.btn_capturar["state"]), "normal")
         self.assertEqual(str(self.app.combo_janelas["state"]), "readonly")
 
+    def test_modo_ponto_da_tela_troca_os_campos(self):
+        self.app.var_x.set("10")
+        self.app.var_y.set("20")
+        self.app.var_alvo.set(engine.TARGET_SCREEN)
+        # os campos X e Y passam a mexer nas coordenadas da tela
+        self.assertEqual(str(self.app.ent_x["textvariable"]), str(self.app.var_tela_x))
+        self.assertEqual(str(self.app.btn_capturar["state"]), "normal")
+        self.assertEqual(str(self.app.combo_janelas["state"]), "disabled")
+        self.assertEqual(str(self.app.btn_centro["state"]), "disabled")
+
+        self.app.var_alvo.set(engine.TARGET_WINDOW)
+        self.assertEqual(str(self.app.ent_x["textvariable"]), str(self.app.var_x))
+        self.assertEqual(self.app.var_x.get(), "10", "o ponto da janela foi perdido")
+
+    def test_avisa_que_o_jogo_ignora_clique_em_segundo_plano(self):
+        self.app.var_alvo.set(engine.TARGET_WINDOW)
+        self.app.hwnd_alvo = 4321
+        self.app.processo_alvo = "RobloxPlayerBeta.exe"
+        self.assertEqual(self.app._jogo_do_alvo(), "Roblox")
+        # askyesno devolve False nos testes: o macro nem chega a começar
+        self.app.iniciar()
+        self.assertFalse(self.app.motor.running)
+
     # -- ciclo completo --------------------------------------------------
 
     def test_inicia_conta_e_para_sozinho_no_limite(self):

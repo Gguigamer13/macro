@@ -141,6 +141,56 @@ class TesteSegurarComCliquePeriodico(BaseMotor):
         self.assertEqual(self.sender.sem_movimento[-1], "up")
 
 
+class TesteCliqueEmPontoDaTela(unittest.TestCase):
+    """O modo que leva o cursor até o ponto, clica e devolve o cursor."""
+
+    def setUp(self):
+        self.eventos = []
+        self.cursor = (500, 400)
+        self.original = (engine.winapi.get_cursor_pos, engine.winapi.set_cursor_pos,
+                         engine.winapi.send_physical)
+
+        def mover(x, y):
+            self.cursor = (x, y)
+            self.eventos.append(("mover", x, y))
+
+        engine.winapi.get_cursor_pos = lambda: self.cursor
+        engine.winapi.set_cursor_pos = mover
+        engine.winapi.send_physical = lambda botao, apertar: self.eventos.append(
+            ("apertar" if apertar else "soltar", botao))
+
+    def tearDown(self):
+        (engine.winapi.get_cursor_pos, engine.winapi.set_cursor_pos,
+         engine.winapi.send_physical) = self.original
+
+    def test_vai_ate_o_ponto_clica_e_devolve_o_cursor(self):
+        enviador = engine.ScreenSender("left", 120, 80)
+        enviador.down()
+        self.assertEqual(self.cursor, (120, 80))
+        self.assertEqual(self.eventos, [("mover", 120, 80), ("apertar", "left")])
+
+        enviador.up()
+        self.assertEqual(self.cursor, (500, 400), "o cursor tinha que voltar")
+        # solta o botão ANTES de voltar, senão viraria um arrastar
+        self.assertEqual(self.eventos[-2:], [("soltar", "left"), ("mover", 500, 400)])
+
+    def test_enquanto_segura_o_cursor_fica_no_ponto(self):
+        enviador = engine.ScreenSender("right", 300, 200)
+        enviador.down()
+        enviador.heartbeat()
+        self.assertEqual(self.cursor, (300, 200))
+        enviador.up()
+        self.assertEqual(self.cursor, (500, 400))
+
+    def test_o_motor_escolhe_esse_modo_e_usa_as_coordenadas_da_tela(self):
+        ajustes = engine.ClickSettings(target=engine.TARGET_SCREEN, x=7, y=7,
+                                       screen_x=640, screen_y=360)
+        ajustes.validate()
+        enviador = engine.build_sender(ajustes)
+        self.assertIsInstance(enviador, engine.ScreenSender)
+        self.assertEqual((enviador.x, enviador.y), (640, 360))
+
+
 class TesteValidacao(unittest.TestCase):
     def test_recusa_valores_impossiveis(self):
         with self.assertRaises(ValueError):

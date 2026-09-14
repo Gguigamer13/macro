@@ -67,6 +67,9 @@ DWMWA_CLOAKED = 14
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
+SM_CXSCREEN = 0
+SM_CYSCREEN = 1
+
 # Codigos virtuais das teclas oferecidas como atalho.
 VK_CODES = {f"F{i}": 0x6F + i for i in range(1, 13)}          # F1..F12 -> 0x70..0x7B
 VK_CODES.update({"Insert": 0x2D, "Delete": 0x2E, "Home": 0x24, "End": 0x23,
@@ -141,6 +144,9 @@ if IS_WINDOWS:
     user32.PostMessageW.argtypes = (wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
     user32.PostMessageW.restype = wintypes.BOOL
     user32.GetCursorPos.argtypes = (ctypes.POINTER(wintypes.POINT),)
+    user32.SetCursorPos.argtypes = (ctypes.c_int, ctypes.c_int)
+    user32.GetSystemMetrics.argtypes = (ctypes.c_int,)
+    user32.GetSystemMetrics.restype = ctypes.c_int
     user32.WindowFromPoint.argtypes = (wintypes.POINT,)
     user32.WindowFromPoint.restype = wintypes.HWND
     user32.ChildWindowFromPointEx.argtypes = (wintypes.HWND, wintypes.POINT, wintypes.UINT)
@@ -311,6 +317,19 @@ def get_cursor_pos() -> tuple[int, int]:
     pt = wintypes.POINT()
     user32.GetCursorPos(ctypes.byref(pt))
     return pt.x, pt.y
+
+
+def set_cursor_pos(x: int, y: int) -> None:
+    """Leva o cursor para um ponto da tela."""
+    _require_windows()
+    if not user32.SetCursorPos(int(x), int(y)):
+        raise WinApiError(f"Nao consegui mover o cursor (erro {ctypes.get_last_error()})")
+
+
+def get_screen_size() -> tuple[int, int]:
+    """Tamanho da tela principal, em pixels."""
+    _require_windows()
+    return user32.GetSystemMetrics(SM_CXSCREEN), user32.GetSystemMetrics(SM_CYSCREEN)
 
 
 def get_client_size(hwnd: int) -> tuple[int, int]:

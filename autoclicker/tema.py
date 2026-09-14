@@ -191,8 +191,9 @@ class Cartao(tk.Frame):
                                   highlightthickness=0)
                 ICONES[icone](marca, 12, 12, CORES["azul_escuro"])
                 marca.pack(side="left", padx=(0, 8))
-            tk.Label(topo, text=titulo, font=fontes["cartao"], bg=CORES["cartao"],
-                     fg=CORES["azul_escuro"]).pack(side="left")
+            self.titulo = tk.Label(topo, text=titulo, font=fontes["cartao"],
+                                   bg=CORES["cartao"], fg=CORES["azul_escuro"])
+            self.titulo.pack(side="left")
             risco = tk.Frame(self, bg=CORES["azul_claro"], height=2)
             risco.pack(fill="x", padx=12, pady=(6, 0))
         self.corpo = tk.Frame(self, bg=CORES["cartao"])
@@ -461,7 +462,7 @@ class Dica(tk.Frame):
 
 
 class Diagrama(tk.Canvas):
-    """Desenho comparando o clique no cursor e o clique em segundo plano."""
+    """Desenho comparando as três formas de entregar o clique."""
 
     ALTURA = 132
 
@@ -479,46 +480,56 @@ class Diagrama(tk.Canvas):
     def redesenhar(self) -> None:
         self.delete("all")
         largura = max(self.winfo_width(), 2)
-        meio = largura / 2
-        self.create_line(meio, 12, meio, self.ALTURA - 12, fill=CORES["borda"])
-        self._cena(meio / 2, self._destaque == "cursor", True)
-        self._cena(meio + meio / 2, self._destaque == "window", False)
+        fatia = largura / 3
+        for indice, tipo in enumerate(("cursor", "window", "screen")):
+            if indice:
+                self.create_line(fatia * indice, 12, fatia * indice, self.ALTURA - 12,
+                                 fill=CORES["borda"])
+            self._cena(fatia * indice + fatia / 2, self._destaque == tipo, tipo)
 
-    def _cena(self, centro: float, ativa: bool, no_cursor: bool) -> None:
-        """Uma das duas cenas; a inativa fica desbotada."""
+    def _cena(self, centro: float, ativa: bool, tipo: str) -> None:
+        """Uma das três cenas; a que não está escolhida fica desbotada."""
         def cor(nome: str) -> str:
             base = CORES[nome]
             return base if ativa else mistura(base, CORES["cartao"], 0.62)
 
-        x0, y0, x1, y1 = centro - 62, 14, centro + 26, 78
+        x0, y0, x1, y1 = centro - 46, 14, centro + 22, 72
         self.create_rectangle(x0, y0, x1, y1, outline=cor("azul_medio"),
                               fill=cor("azul_claro") if ativa else CORES["cartao"])
-        self.create_rectangle(x0, y0, x1, y0 + 10, outline=cor("azul_medio"),
+        self.create_rectangle(x0, y0, x1, y0 + 9, outline=cor("azul_medio"),
                               fill=cor("azul_bebe"))
         for i in range(3):
-            self.create_line(x0 + 6, y0 + 20 + i * 11, x1 - 10, y0 + 20 + i * 11,
+            self.create_line(x0 + 5, y0 + 20 + i * 10, x1 - 8, y0 + 20 + i * 10,
                              fill=cor("borda"))
 
         # ponto que recebe o clique, com as ondas
-        px, py = centro - 12, y1 - 16
-        for raio in (6, 11, 16):
+        px, py = centro - 14, y1 - 16
+        for raio in (5, 10, 15):
             self.create_oval(px - raio, py - raio, px + raio, py + raio,
-                             outline=cor("azul_medio" if raio < 16 else "borda"))
+                             outline=cor("azul_medio" if raio < 15 else "borda"))
         self.create_oval(px - 3, py - 3, px + 3, py + 3,
                          fill=cor("azul_escuro"), outline=cor("azul_escuro"))
 
-        # o cursor: dentro da janela num caso, longe e livre no outro
-        if no_cursor:
+        if tipo == "cursor":
             icone_cursor(self, px + 10, py + 8, cor("azul_escuro"))
-            legenda = "o clique cai onde o\ncursor estiver"
-        else:
-            cx, cy = centro + 46, 34
+            legenda = "cai onde o cursor\nestiver na hora"
+        elif tipo == "window":
+            cx, cy = centro + 40, 30
             icone_cursor(self, cx, cy, cor("azul_escuro"))
-            self.create_text(cx + 4, cy + 18, text="livre", anchor="n",
+            self.create_text(cx + 3, cy + 16, text="livre", anchor="n",
                              font=self.fontes["pequena"], fill=cor("verde"))
-            self.create_line(cx - 12, cy + 6, px + 18, py - 14, fill=cor("borda"),
+            self.create_line(cx - 10, cy + 6, px + 16, py - 12, fill=cor("borda"),
                              dash=(3, 3))
-            legenda = "a janela recebe o clique\ne o mouse continua livre"
+            legenda = "a janela recebe o clique\ne o mouse fica livre"
+        else:
+            cx, cy = centro + 40, 30
+            icone_cursor(self, cx, cy, cor("azul_escuro"))
+            # o cursor vai até o ponto e volta
+            self.create_line(cx - 8, cy + 10, px + 14, py - 10, fill=cor("azul_medio"),
+                             dash=(2, 2), arrow="last", arrowshape=(6, 7, 2))
+            self.create_line(px + 16, py - 14, cx - 4, cy + 14, fill=cor("azul_medio"),
+                             dash=(2, 2), arrow="last", arrowshape=(6, 7, 2))
+            legenda = "o mouse vai até o ponto,\nclica e volta"
         self.create_text(centro, self.ALTURA - 26, text=legenda, justify="center",
                          font=self.fontes["pequena"],
                          fill=cor("azul_escuro") if ativa else CORES["texto_suave"])

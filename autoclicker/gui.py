@@ -33,7 +33,28 @@ DESTINOS = [
     (engine.TARGET_WINDOW, "Em uma janela, em segundo plano",
      "O clique vai direto para a janela escolhida e o seu mouse continua livre.",
      "janela"),
+    (engine.TARGET_SCREEN, "Em um ponto fixo da tela",
+     "O mouse vai até o ponto, clica e volta sozinho. É o que funciona em jogos.",
+     "alvo"),
 ]
+
+# Jogos que leem o mouse por Raw Input / DirectInput: eles ignoram mensagens de
+# clique, então o modo em segundo plano não tem efeito nenhum neles.
+JOGOS_QUE_IGNORAM = {
+    "robloxplayerbeta.exe": "Roblox",
+    "windows10universal.exe": "Roblox",
+    "javaw.exe": "Minecraft",
+    "minecraft.windows.exe": "Minecraft",
+    "fortniteclient-win64-shipping.exe": "Fortnite",
+    "valorant-win64-shipping.exe": "Valorant",
+    "cs2.exe": "Counter-Strike 2",
+    "csgo.exe": "CS:GO",
+    "r5apex.exe": "Apex Legends",
+    "gta5.exe": "GTA V",
+    "rustclient.exe": "Rust",
+    "genshinimpact.exe": "Genshin Impact",
+    "overwatch.exe": "Overwatch",
+}
 
 
 class AutoClickerApp:
@@ -47,6 +68,7 @@ class AutoClickerApp:
         self.janelas: list[dict] = []
         self.hwnd_alvo: int = 0
         self.titulo_alvo: str = ""
+        self.processo_alvo: str = ""
         self._linhas_modo: list[dict] = []
         self._linhas_destino: list[dict] = []
 
@@ -62,6 +84,7 @@ class AutoClickerApp:
         self._aplicar_atalhos()
         self._atualizar_lista_janelas()
         self._realcar_escolhas()
+        self._ajustar_campos_do_ponto()
         self._atualizar_habilitados()
         self._atualizar_mapa()
         self._atualizar_cps()
@@ -99,6 +122,8 @@ class AutoClickerApp:
         self.var_limite = tk.StringVar(value=str(c["limit"]))
         self.var_x = tk.StringVar(value=str(c["x"]))
         self.var_y = tk.StringVar(value=str(c["y"]))
+        self.var_tela_x = tk.StringVar(value=str(c["screen_x"]))
+        self.var_tela_y = tk.StringVar(value=str(c["screen_y"]))
         self.var_janela = tk.StringVar()
         self.var_tecla_iniciar = tk.StringVar(value=c["hotkey_start"])
         self.var_tecla_capturar = tk.StringVar(value=c["hotkey_pick"])
@@ -113,6 +138,8 @@ class AutoClickerApp:
         self.var_alvo.trace_add("write", lambda *_: self._modo_mudou())
         self.var_x.trace_add("write", lambda *_: self._atualizar_mapa())
         self.var_y.trace_add("write", lambda *_: self._atualizar_mapa())
+        self.var_tela_x.trace_add("write", lambda *_: self._atualizar_mapa())
+        self.var_tela_y.trace_add("write", lambda *_: self._atualizar_mapa())
         self.var_topmost.trace_add("write", lambda *_: self._aplicar_topmost())
         self._aplicar_topmost()
         self._atualizar_cps()
@@ -130,7 +157,7 @@ class AutoClickerApp:
         self.abas.add(self._aba_modo(), text="  Modo  ")
         self.abas.add(self._aba_tempos(), text="  Tempos  ")
         self.abas.add(self._aba_destino(), text="  Destino  ")
-        self.abas.add(self._aba_janela(), text="  Janela  ")
+        self.abas.add(self._aba_janela(), text="  Ponto  ")
         self.abas.add(self._aba_atalhos(), text="  Atalhos  ")
 
         self._rodape().pack(fill="x", padx=14, pady=(10, 0))
@@ -234,8 +261,8 @@ class AutoClickerApp:
         self.diagrama.pack(fill="x", pady=(10, 0))
 
         tema.Dica(aba, self.fontes,
-                  "No modo em segundo plano escolha a janela e o ponto do clique na aba "
-                  "Janela, ao lado.", "janela").pack(fill="x", side="bottom",
+                  "Escolhida a opção, ajuste a janela ou o ponto do clique na aba Ponto, "
+                  "ao lado.", "janela").pack(fill="x", side="bottom",
                                                      padx=14, pady=14)
         return aba
 
@@ -243,8 +270,14 @@ class AutoClickerApp:
 
     def _aba_janela(self) -> tk.Frame:
         aba = self._nova_aba()
+        tema.Dica(aba, self.fontes,
+                  "Use “Testar 1 clique” antes de soltar o macro: dá para ver na hora se "
+                  "o alvo aceita o clique. Jogos quase sempre só aceitam no modo ponto "
+                  "fixo da tela, com o jogo na frente.",
+                  "alvo").pack(fill="x", side="bottom", padx=14, pady=14)
         cartao = tema.Cartao(aba, self.fontes, "Janela e ponto do clique", "janela")
         cartao.pack(fill="x", padx=14, pady=(14, 0))
+        self.cartao_ponto = cartao
         corpo = cartao.corpo
 
         linha1 = tk.Frame(corpo, bg=CORES["cartao"])
@@ -264,7 +297,9 @@ class AutoClickerApp:
                                        self._capturar_ponto, principal=True,
                                        padx=10, pady=3)
         self.btn_capturar.pack(side="left")
-        tema.rotulo(linha2, "X", self.fontes, "suave").pack(side="left", padx=(12, 3))
+        self.lbl_coordenadas = tema.rotulo(linha2, "ponto:", self.fontes, "suave")
+        self.lbl_coordenadas.pack(side="left", padx=(12, 4))
+        tema.rotulo(linha2, "X", self.fontes, "suave").pack(side="left", padx=(0, 3))
         self.ent_x = tema.entrada(linha2, self.var_x, self.fontes, largura=7)
         self.ent_x.pack(side="left")
         tema.rotulo(linha2, "Y", self.fontes, "suave").pack(side="left", padx=(8, 3))
@@ -286,10 +321,6 @@ class AutoClickerApp:
         self.mapa = tema.MapaAlvo(corpo, self.fontes)
         self.mapa.pack(fill="x", pady=(10, 0))
 
-        tema.Dica(aba, self.fontes,
-                  "Use “Testar 1 clique” antes de soltar o macro: dá para ver na hora se "
-                  "a janela aceita clique em segundo plano.",
-                  "alvo").pack(fill="x", side="bottom", padx=14, pady=14)
         return aba
 
     # -- aba 5: atalhos --------------------------------------------------
@@ -383,9 +414,34 @@ class AutoClickerApp:
 
     def _modo_mudou(self) -> None:
         self._realcar_escolhas()
+        self._ajustar_campos_do_ponto()
         self._atualizar_habilitados()
+        self._atualizar_mapa()
         if hasattr(self, "diagrama"):
             self.diagrama.mostrar(self.var_alvo.get())
+
+    def _texto_do_botao_capturar(self) -> str:
+        alvo = "ponto da tela" if self.var_alvo.get() == engine.TARGET_SCREEN \
+            else "janela e ponto"
+        return f"Capturar {alvo}  ({self.var_tecla_capturar.get()})"
+
+    def _ajustar_campos_do_ponto(self) -> None:
+        """Os campos X e Y servem aos dois modos: dentro da janela ou na tela."""
+        if not hasattr(self, "ent_x"):
+            return
+        tela = self.var_alvo.get() == engine.TARGET_SCREEN
+        self.ent_x.configure(textvariable=self.var_tela_x if tela else self.var_x)
+        self.ent_y.configure(textvariable=self.var_tela_y if tela else self.var_y)
+        self.lbl_coordenadas.configure(
+            text="na tela:" if tela else "na janela:")
+        self.cartao_ponto.titulo.configure(
+            text="Ponto fixo da tela" if tela else "Janela e ponto do clique")
+        self.btn_capturar.configure(text=self._texto_do_botao_capturar())
+        if tela:
+            self.var_detalhe_alvo.set(
+                "o clique cai nesse ponto da tela,\ncom a janela alvo na frente")
+        else:
+            self._descrever_alvo()
 
     def _escolher_botao(self, _evento=None) -> None:
         self.var_botao.set(dict(BOTOES)[self.combo_botao.get()])
@@ -440,6 +496,7 @@ class AutoClickerApp:
         rodando = self.motor.running
         modo = self.var_modo.get()
         janela = self.var_alvo.get() == engine.TARGET_WINDOW
+        tela = self.var_alvo.get() == engine.TARGET_SCREEN
 
         def estado(ativo: bool) -> str:
             return "normal" if ativo and not rodando else "disabled"
@@ -452,9 +509,10 @@ class AutoClickerApp:
         self.combo_botao.configure(state="readonly" if not rodando else "disabled")
         self.combo_janelas.configure(
             state="readonly" if janela and not rodando else "disabled")
-        for widget in (self.btn_atualizar, self.btn_centro, self.ent_x, self.ent_y,
-                       self.btn_capturar, self.btn_testar):
+        for widget in (self.btn_atualizar, self.btn_centro):
             widget.configure(state=estado(janela))
+        for widget in (self.ent_x, self.ent_y, self.btn_capturar, self.btn_testar):
+            widget.configure(state=estado(janela or tela))
         self.btn_iniciar.configure(state="disabled" if rodando else "normal")
         self.btn_parar.configure(state="normal" if rodando else "disabled")
 
@@ -495,6 +553,7 @@ class AutoClickerApp:
             janela = self.janelas[indice]
             self.hwnd_alvo = janela["hwnd"]
             self.titulo_alvo = janela["title"]
+            self.processo_alvo = janela["process"]
             if not self.var_x.get().strip() or (self.var_x.get() == "0"
                                                 and self.var_y.get() == "0"):
                 self._usar_centro()
@@ -511,6 +570,12 @@ class AutoClickerApp:
     def _capturar_ponto(self) -> None:
         if not winapi.IS_WINDOWS:
             return
+        if self.var_alvo.get() == engine.TARGET_SCREEN:
+            x, y = winapi.get_cursor_pos()
+            self.var_tela_x.set(str(x))
+            self.var_tela_y.set(str(y))
+            self._definir_status(f"Ponto da tela capturado: {x}, {y}", CORES["verde"])
+            return
         try:
             hwnd, x, y = winapi.window_at_cursor()
         except winapi.WinApiError as erro:
@@ -522,6 +587,7 @@ class AutoClickerApp:
             return
         self.hwnd_alvo = hwnd
         self.titulo_alvo = winapi.get_window_title(hwnd)
+        self.processo_alvo = winapi.get_process_name(hwnd)
         self.var_x.set(str(x))
         self.var_y.set(str(y))
         self.var_alvo.set(engine.TARGET_WINDOW)
@@ -545,15 +611,33 @@ class AutoClickerApp:
                     self._inteiro(self.var_y, "Y"))
                 aviso = "\n⚠ a janela está minimizada" if winapi.is_minimized(
                     self.hwnd_alvo) else ""
+                jogo = self._jogo_do_alvo()
+                if jogo:
+                    aviso += f"\n⚠ o {jogo} ignora clique em segundo plano"
                 self.var_detalhe_alvo.set(
                     f"recebe o clique:\n{winapi.get_class_name(alvo)}{aviso}")
             except (ValueError, winapi.WinApiError) as erro:
                 self.var_detalhe_alvo.set(str(erro))
         self._atualizar_mapa()
 
+    def _jogo_do_alvo(self) -> str:
+        """Nome do jogo, quando a janela alvo é de um que ignora mensagens."""
+        return JOGOS_QUE_IGNORAM.get((self.processo_alvo or "").lower(), "")
+
     def _atualizar_mapa(self) -> None:
         mapa = getattr(self, "mapa", None)
         if mapa is None:
+            return
+        if self.var_alvo.get() == engine.TARGET_SCREEN:
+            if not winapi.IS_WINDOWS:
+                mapa.limpar("O ponto da tela aparece aqui.")
+                return
+            try:
+                largura, altura = winapi.get_screen_size()
+                mapa.mostrar(largura, altura, self._inteiro(self.var_tela_x, "X"),
+                             self._inteiro(self.var_tela_y, "Y"), "Tela do computador")
+            except (ValueError, winapi.WinApiError):
+                mapa.limpar("Confira os valores de X e Y.")
             return
         if not self.hwnd_alvo or not winapi.is_window(self.hwnd_alvo):
             mapa.limpar("Escolha uma janela para ver onde o clique vai cair.")
@@ -598,6 +682,8 @@ class AutoClickerApp:
             hwnd=self.hwnd_alvo,
             x=self._inteiro(self.var_x, "ponto X"),
             y=self._inteiro(self.var_y, "ponto Y"),
+            screen_x=self._inteiro(self.var_tela_x, "ponto X da tela"),
+            screen_y=self._inteiro(self.var_tela_y, "ponto Y da tela"),
             window_title=self.titulo_alvo,
         )
         ajustes.validate()
@@ -611,6 +697,17 @@ class AutoClickerApp:
         except ValueError as erro:
             messagebox.showerror("Auto Clicker", str(erro), parent=self.root)
             return
+        jogo = self._jogo_do_alvo()
+        if ajustes.target == engine.TARGET_WINDOW and jogo:
+            if not messagebox.askyesno(
+                    "Auto Clicker",
+                    f"O {jogo} lê o mouse direto do driver e ignora cliques enviados "
+                    "para a janela em segundo plano. O macro vai rodar, mas nada vai "
+                    "acontecer no jogo.\n\n"
+                    "O que funciona nesse caso é o modo “Em um ponto fixo da tela” "
+                    "(ou “Na posição atual do mouse”), com o jogo na frente.\n\n"
+                    "Quer tentar mesmo assim?", parent=self.root):
+                return
         if ajustes.target == engine.TARGET_WINDOW and winapi.is_minimized(ajustes.hwnd):
             if not messagebox.askyesno(
                     "Auto Clicker",
@@ -694,7 +791,7 @@ class AutoClickerApp:
         })
         self.btn_iniciar.configure(text=f"INICIAR  ({iniciar})")
         self.btn_parar.configure(text=f"PARAR  ({iniciar})")
-        self.btn_capturar.configure(text=f"Capturar janela e ponto  ({capturar})")
+        self.btn_capturar.configure(text=self._texto_do_botao_capturar())
 
     # ------------------------------------------------------------------
 
@@ -716,6 +813,8 @@ class AutoClickerApp:
             "limit": numero(self.var_limite, 0),
             "x": numero(self.var_x, 0),
             "y": numero(self.var_y, 0),
+            "screen_x": numero(self.var_tela_x, 0),
+            "screen_y": numero(self.var_tela_y, 0),
             "hotkey_start": self.var_tecla_iniciar.get(),
             "hotkey_pick": self.var_tecla_capturar.get(),
             "sempre_visivel": bool(self.var_topmost.get()),

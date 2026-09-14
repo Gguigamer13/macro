@@ -18,6 +18,7 @@ MODE_HOLD_CLICK = "hold_click"  # segura e, de tempos em tempos, da um clique
 # Para onde vai o clique
 TARGET_CURSOR = "cursor"        # posicao atual do mouse (clique fisico)
 TARGET_WINDOW = "window"        # janela escolhida, em segundo plano
+TARGET_SCREEN = "screen"        # ponto fixo da tela: leva o cursor, clica e volta
 
 MODE_LABELS = {
     MODE_CLICK: "Auto click",
@@ -41,6 +42,8 @@ class ClickSettings:
     hwnd: int = 0                   # janela alvo
     x: int = 0                      # ponto do clique, relativo a area cliente
     y: int = 0
+    screen_x: int = 0               # ponto do clique em coordenadas da tela
+    screen_y: int = 0
     window_title: str = ""
 
     def validate(self) -> None:
@@ -58,6 +61,8 @@ class ClickSettings:
             raise ValueError("A variacao aleatoria deve ficar entre 0% e 90%.")
         if self.limit < 0:
             raise ValueError("O limite de cliques nao pode ser negativo.")
+        if self.target not in (TARGET_CURSOR, TARGET_WINDOW, TARGET_SCREEN):
+            raise ValueError("Destino do clique invalido.")
         if self.target == TARGET_WINDOW:
             if not self.hwnd:
                 raise ValueError("Escolha uma janela antes de comecar.")
@@ -90,6 +95,32 @@ class CursorSender(Sender):
 
     def up(self) -> None:
         winapi.send_physical(self.button, False)
+
+
+class ScreenSender(Sender):
+    """Clique fisico num ponto fixo da tela.
+
+    O cursor vai ate o ponto, clica e volta para onde estava. Serve para jogos
+    que so aceitam mouse de verdade (Roblox, Minecraft e companhia), onde o
+    clique em segundo plano nao funciona.
+    """
+
+    def __init__(self, button: str, x: int, y: int) -> None:
+        self.button = button
+        self.x = x
+        self.y = y
+        self._origem: Optional[tuple[int, int]] = None
+
+    def down(self) -> None:
+        self._origem = winapi.get_cursor_pos()
+        winapi.set_cursor_pos(self.x, self.y)
+        winapi.send_physical(self.button, True)
+
+    def up(self) -> None:
+        winapi.send_physical(self.button, False)
+        if self._origem:  # so volta depois de soltar, senao viraria arrastar
+            winapi.set_cursor_pos(*self._origem)
+            self._origem = None
 
 
 class WindowSender(Sender):
@@ -133,6 +164,8 @@ class WindowSender(Sender):
 def build_sender(settings: ClickSettings) -> Sender:
     if settings.target == TARGET_WINDOW:
         return WindowSender(settings.button, settings.hwnd, settings.x, settings.y)
+    if settings.target == TARGET_SCREEN:
+        return ScreenSender(settings.button, settings.screen_x, settings.screen_y)
     return CursorSender(settings.button)
 
 
