@@ -26,6 +26,7 @@ REPOSITORIO = "Gguigamer13/macro"
 # desenvolvimento for juntada na principal.
 BRANCHES = ("main", "master", "claude/auto-click-macro-page-select-d8dwj1")
 
+URL_API = "https://api.github.com/repos/{repo}"
 URL_VERSAO = "https://raw.githubusercontent.com/{repo}/{branch}/versao.json"
 URL_PACOTE = "https://codeload.github.com/{repo}/zip/refs/heads/{branch}"
 URL_PAGINA = "https://github.com/{repo}"
@@ -48,6 +49,7 @@ class Atualizacao:
     data: str
     branch: str
     instalada: str
+    candidatas: tuple = ()
 
     @property
     def mais_nova(self) -> bool:
@@ -114,10 +116,38 @@ def _baixar(url: str, tempo_limite: int = 15) -> bytes:
             "Não consegui falar com o GitHub. Verifique a internet.") from erro
 
 
+def _branch_padrao(tempo_limite: int = 10) -> Optional[str]:
+    """Pergunta ao GitHub qual é a branch principal do repositório.
+
+    Vale a pergunta: o endereço "raw" aceita master como apelido da branch
+    padrao, mas o download do .zip so aceita o nome de verdade - entao adivinhar
+    o nome daria versao certa e pacote inexistente.
+    """
+    try:
+        dados = json.loads(
+            _baixar(URL_API.format(repo=REPOSITORIO), tempo_limite).decode("utf-8"))
+    except (ErroDeAtualizacao, ValueError, UnicodeDecodeError):
+        return None
+    branch = str(dados.get("default_branch", "")).strip()
+    return branch or None
+
+
+def _branches_candidatas(tempo_limite: int) -> list:
+    candidatas = []
+    padrao = _branch_padrao(min(tempo_limite, 10))
+    if padrao:
+        candidatas.append(padrao)
+    for branch in BRANCHES:
+        if branch not in candidatas:
+            candidatas.append(branch)
+    return candidatas
+
+
 def procurar_atualizacao(tempo_limite: int = 15) -> Atualizacao:
     """Lê o versao.json publicado e devolve o que encontrou."""
     ultimo_erro: Optional[Exception] = None
-    for branch in BRANCHES:
+    candidatas = _branches_candidatas(tempo_limite)
+    for branch in candidatas:
         url = URL_VERSAO.format(repo=REPOSITORIO, branch=branch)
         try:
             dados = json.loads(_baixar(url, tempo_limite).decode("utf-8"))
@@ -133,17 +163,33 @@ def procurar_atualizacao(tempo_limite: int = 15) -> Atualizacao:
             continue
         return Atualizacao(versao=versao, notas=str(dados.get("notas", "")).strip(),
                            data=str(dados.get("data", "")).strip(), branch=branch,
-                           instalada=versao_instalada())
+                           instalada=versao_instalada(),
+                           candidatas=tuple(candidatas))
     raise ultimo_erro or ErroDeAtualizacao("Não encontrei a versão publicada.")
 
 
 def baixar_pacote(atualizacao: Atualizacao, pasta: str,
                   tempo_limite: int = 60) -> str:
-    """Baixa o .zip da branch e devolve o caminho do arquivo."""
+    """Baixa o .zip do programa e devolve o caminho do arquivo.
+
+    Tenta a branch de onde veio a versao e, se ela nao existir como ref de
+    verdade (caso do apelido "master"), tenta as outras da lista.
+    """
     destino = os.path.join(pasta, "autoclicker-atualizacao.zip")
-    with open(destino, "wb") as arquivo:
-        arquivo.write(_baixar(atualizacao.url_pacote, tempo_limite))
-    return destino
+    tentativas = [atualizacao.branch] + [b for b in atualizacao.candidatas
+                                         if b != atualizacao.branch]
+    ultimo_erro: Optional[Exception] = None
+    for branch in tentativas:
+        url = URL_PACOTE.format(repo=REPOSITORIO, branch=branch)
+        try:
+            dados = _baixar(url, tempo_limite)
+        except ErroDeAtualizacao as erro:
+            ultimo_erro = erro
+            continue
+        with open(destino, "wb") as arquivo:
+            arquivo.write(dados)
+        return destino
+    raise ultimo_erro or ErroDeAtualizacao("Não consegui baixar a nova versão.")
 
 
 # --------------------------------------------------------------------------

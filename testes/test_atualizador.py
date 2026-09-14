@@ -70,7 +70,8 @@ class TesteProcura(unittest.TestCase):
         self.assertEqual(info.branch, "master")
         self.assertEqual(info.notas, "coisas novas")
         self.assertTrue(info.mais_nova)
-        self.assertIn("/main/", self.pedidos[0])  # tentou a principal primeiro
+        raws = [u for u in self.pedidos if "raw.githubusercontent" in u]
+        self.assertIn("/main/", raws[0])  # tentou a principal primeiro
 
     def test_avisa_quando_ja_esta_atualizado(self):
         self._responder({"/main/": json.dumps(
@@ -87,6 +88,54 @@ class TesteProcura(unittest.TestCase):
         self._responder({"/main/": "isso nao e json"})
         with self.assertRaises(atualizador.ErroDeAtualizacao):
             atualizador.procurar_atualizacao()
+
+
+    def test_pergunta_ao_github_qual_e_a_branch_principal(self):
+        """O nome da branch vem da API: adivinhar dá versão certa e pacote 404."""
+        self._responder({
+            "api.github.com": json.dumps({"default_branch": "producao"}),
+            "/producao/": json.dumps({"versao": "9.9.9"}),
+        })
+        info = atualizador.procurar_atualizacao()
+        self.assertEqual(info.branch, "producao")
+        self.assertEqual(info.candidatas[0], "producao")
+
+    def test_sem_api_continua_pela_lista_conhecida(self):
+        self._responder({"/master/": json.dumps({"versao": "9.9.9"})})
+        info = atualizador.procurar_atualizacao()
+        self.assertEqual(info.branch, "master")
+
+    def test_baixa_de_outra_branch_quando_a_primeira_nao_existe(self):
+        """É o caso real: o raw aceita "master", mas o .zip de master não existe."""
+        baixados = []
+
+        def falso(url, tempo_limite=15):
+            baixados.append(url)
+            if "/master" in url:
+                raise atualizador.ErroDeAtualizacao("O GitHub respondeu 404")
+            return b"conteudo do zip"
+
+        atualizador._baixar = falso
+        info = atualizador.Atualizacao(
+            versao="9.9.9", notas="", data="", branch="master",
+            instalada="1.0.0", candidatas=("master", "dev"))
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = atualizador.baixar_pacote(info, pasta)
+            with open(caminho, "rb") as arquivo:
+                self.assertEqual(arquivo.read(), b"conteudo do zip")
+        self.assertTrue(any("/dev" in url for url in baixados))
+
+    def test_erro_claro_quando_nenhuma_branch_tem_o_pacote(self):
+        def falso(url, tempo_limite=15):
+            raise atualizador.ErroDeAtualizacao("O GitHub respondeu 404")
+
+        atualizador._baixar = falso
+        info = atualizador.Atualizacao(versao="9.9.9", notas="", data="",
+                                       branch="x", instalada="1.0.0",
+                                       candidatas=("x", "y"))
+        with tempfile.TemporaryDirectory() as pasta:
+            with self.assertRaises(atualizador.ErroDeAtualizacao):
+                atualizador.baixar_pacote(info, pasta)
 
 
 class TesteInstalacao(unittest.TestCase):
