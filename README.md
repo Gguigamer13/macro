@@ -149,8 +149,10 @@ na mesma aba) e só avisa quando realmente existe novidade.
 
 Como funciona por dentro:
 
-- o programa lê o arquivo `versao.json` publicado no repositório e compara com
-  a versão que você tem;
+- o programa lê o arquivo `versao.json` publicado no repositório (pela API do
+  GitHub, que responde na hora — o endereço `raw` guarda cópia em cache por
+  cinco minutos e mostraria a versão antiga) e compara com a versão que você
+  tem;
 - se for mais nova, baixa o `.zip` do repositório, confere se o pacote é mesmo
   o Auto Clicker e troca os arquivos;
 - **a versão anterior fica guardada** na pasta `versao-anterior`, dentro da

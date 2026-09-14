@@ -7,11 +7,13 @@ nada instalado. O arquivo versao.json, na raiz do repositório, é quem diz qual
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -27,6 +29,7 @@ REPOSITORIO = "Gguigamer13/macro"
 BRANCHES = ("main", "master", "claude/auto-click-macro-page-select-d8dwj1")
 
 URL_API = "https://api.github.com/repos/{repo}"
+URL_ARQUIVO = "https://api.github.com/repos/{repo}/contents/versao.json?ref={branch}"
 URL_VERSAO = "https://raw.githubusercontent.com/{repo}/{branch}/versao.json"
 URL_PACOTE = "https://codeload.github.com/{repo}/zip/refs/heads/{branch}"
 URL_PAGINA = "https://github.com/{repo}"
@@ -101,10 +104,18 @@ def pasta_do_programa() -> str:
 # --------------------------------------------------------------------------
 
 
+def _sem_cache(url: str) -> str:
+    """Acrescenta um parâmetro descartável ao endereço."""
+    separador = "&" if "?" in url else "?"
+    return f"{url}{separador}t={int(time.time())}"
+
+
 def _baixar(url: str, tempo_limite: int = 15) -> bytes:
     pedido = urllib.request.Request(url, headers={
         "User-Agent": f"AutoClicker/{__version__}",
         "Accept": "*/*",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
     })
     try:
         with urllib.request.urlopen(pedido, timeout=tempo_limite) as resposta:
@@ -124,8 +135,8 @@ def _branch_padrao(tempo_limite: int = 10) -> Optional[str]:
     o nome daria versao certa e pacote inexistente.
     """
     try:
-        dados = json.loads(
-            _baixar(URL_API.format(repo=REPOSITORIO), tempo_limite).decode("utf-8"))
+        dados = json.loads(_baixar(
+            _sem_cache(URL_API.format(repo=REPOSITORIO)), tempo_limite).decode("utf-8"))
     except (ErroDeAtualizacao, ValueError, UnicodeDecodeError):
         return None
     branch = str(dados.get("default_branch", "")).strip()
@@ -143,14 +154,34 @@ def _branches_candidatas(tempo_limite: int) -> list:
     return candidatas
 
 
+def _ler_versao_publicada(branch: str, tempo_limite: int) -> dict:
+    """Lê o versao.json de uma branch.
+
+    Tenta primeiro pela API, que devolve o conteúdo na hora. O endereço raw
+    guarda cópia em cache por cinco minutos e ignora truque de parâmetro, então
+    ele fica só de reserva, para o caso de a API estar fora do ar ou ter
+    estourado o limite de consultas por hora.
+    """
+    url_api = _sem_cache(URL_ARQUIVO.format(repo=REPOSITORIO, branch=branch))
+    try:
+        resposta = json.loads(_baixar(url_api, tempo_limite).decode("utf-8"))
+        if resposta.get("encoding") == "base64":
+            bruto = base64.b64decode(resposta.get("content", ""))
+            return json.loads(bruto.decode("utf-8"))
+    except (ErroDeAtualizacao, ValueError, UnicodeDecodeError, TypeError):
+        pass
+
+    url_raw = _sem_cache(URL_VERSAO.format(repo=REPOSITORIO, branch=branch))
+    return json.loads(_baixar(url_raw, tempo_limite).decode("utf-8"))
+
+
 def procurar_atualizacao(tempo_limite: int = 15) -> Atualizacao:
     """Lê o versao.json publicado e devolve o que encontrou."""
     ultimo_erro: Optional[Exception] = None
     candidatas = _branches_candidatas(tempo_limite)
     for branch in candidatas:
-        url = URL_VERSAO.format(repo=REPOSITORIO, branch=branch)
         try:
-            dados = json.loads(_baixar(url, tempo_limite).decode("utf-8"))
+            dados = _ler_versao_publicada(branch, tempo_limite)
         except ErroDeAtualizacao as erro:
             ultimo_erro = erro
             continue

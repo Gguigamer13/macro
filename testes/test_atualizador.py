@@ -73,6 +73,23 @@ class TesteProcura(unittest.TestCase):
         raws = [u for u in self.pedidos if "raw.githubusercontent" in u]
         self.assertIn("/main/", raws[0])  # tentou a principal primeiro
 
+    def test_le_pela_api_para_fugir_do_cache(self):
+        """O endereço raw serve cópia de até 5 minutos atrás; a API, não."""
+        import base64
+        conteudo = base64.b64encode(
+            json.dumps({"versao": "9.9.9"}).encode("utf-8")).decode()
+        self._responder({"contents/versao.json?ref=main":
+                         json.dumps({"encoding": "base64", "content": conteudo})})
+        info = atualizador.procurar_atualizacao()
+        self.assertEqual(info.versao, "9.9.9")
+        self.assertTrue(any("contents/versao.json" in url for url in self.pedidos))
+
+    def test_se_a_api_falhar_cai_para_o_raw(self):
+        self._responder({"/main/versao.json": json.dumps({"versao": "9.9.9"})})
+        info = atualizador.procurar_atualizacao()
+        self.assertEqual(info.versao, "9.9.9")
+        self.assertTrue(any("raw.githubusercontent" in url for url in self.pedidos))
+
     def test_avisa_quando_ja_esta_atualizado(self):
         self._responder({"/main/": json.dumps(
             {"versao": atualizador.versao_instalada()})})
