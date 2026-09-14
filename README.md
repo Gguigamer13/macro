@@ -29,6 +29,38 @@ python -m autoclicker
 Não existem dependências externas: só a biblioteca padrão do Python
 (`tkinter` + `ctypes`), que já vem junto no instalador oficial do Windows.
 
+## Transformar em .exe e instalar
+
+Dê dois cliques em **`criar_exe.bat`**. Ele faz tudo sozinho:
+
+1. procura o Python no computador;
+2. baixa e instala o PyInstaller (só na primeira vez — precisa de internet);
+3. desenha o ícone do programa (`ferramentas/gerar_icone.py`, sem usar nenhuma
+   biblioteca de imagem);
+4. gera um único arquivo: `dist\AutoClicker.exe`;
+5. **mostra os discos do computador** (letra, nome e espaço livre) e pergunta
+   em qual deles você quer instalar — C:, D:, um HD externo, o que estiver
+   ligado;
+6. pergunta o nome da pasta (padrão: `Auto Clicker`), copia o executável para
+   lá e, se você quiser, cria um atalho na área de trabalho.
+
+Se preferir não instalar na hora, é só responder `N`: o executável fica em
+`dist\AutoClicker.exe` e você copia para onde quiser depois.
+
+Sobre o `.exe` gerado:
+
+- **não precisa de Python** na máquina onde ele vai rodar — dá para levar num
+  pendrive;
+- é um arquivo só, de uns 12 a 15 MB;
+- como ele acabou de ser criado aí no seu computador, sem assinatura digital,
+  o antivírus ou o SmartScreen pode perguntar se você confia na primeira
+  execução. É só escolher "mais informações" e depois "executar assim mesmo".
+  Auto clickers costumam ser marcados por heurística justamente por mexerem
+  com mouse e teclado;
+- se a pasta escolhida for protegida (a raiz de `C:`, por exemplo) e o Windows
+  recusar, clique no `.bat` com o botão direito e use "Executar como
+  administrador", ou escolha outra pasta.
+
 ## Como usar
 
 A janela é dividida em cinco abas, além do rodapé fixo com o botão de iniciar,
@@ -146,6 +178,9 @@ python -m unittest discover -s testes -v
 ## Organização do código
 
 ```
+criar_exe.bat      gera o .exe e instala no disco que você escolher
+iniciar.bat        roda direto pelo Python, sem gerar executável
+auto_clicker.py    ponto de entrada usado pelo .exe
 autoclicker/
   winapi.py    ligações com a API do Windows (SendInput, PostMessage, janelas)
   engine.py    motor de cliques: os três modos, rodando em uma thread
@@ -153,7 +188,10 @@ autoclicker/
   config.py    salvar/carregar preferências
   tema.py      paleta, estilos e os elementos gráficos desenhados
   gui.py       interface em tkinter: as cinco abas e o rodapé
+ferramentas/
+  gerar_icone.py   desenha o ícone e escreve o .ico byte a byte
 testes/
   test_engine.py   os três modos, o limite e a parada
   test_gui.py      montagem da janela, campos, atalhos e o ciclo completo
+  test_icone.py    o formato do .ico e do .png gerados
 ```

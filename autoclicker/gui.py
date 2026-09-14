@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import queue
 import sys
 import tkinter as tk
@@ -51,6 +52,7 @@ class AutoClickerApp:
 
         root.title("Auto Clicker")
         root.configure(bg=CORES["gelo"])
+        self._aplicar_icone()
         root.resizable(False, False)
         root.protocol("WM_DELETE_WINDOW", self._fechar)
         self.fontes = tema.aplicar_estilos(root)
@@ -65,6 +67,21 @@ class AutoClickerApp:
         self._atualizar_cps()
         self.diagrama.mostrar(self.var_alvo.get())
         self._agendamento = self.root.after(40, self._processar_fila)
+
+    def _aplicar_icone(self) -> None:
+        """Usa o icone.ico na barra de título, se ele estiver por perto.
+
+        Quando o programa vira .exe, o PyInstaller descompacta os arquivos numa
+        pasta temporária apontada por sys._MEIPASS.
+        """
+        base = getattr(sys, "_MEIPASS", None) or os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))
+        caminho = os.path.join(base, "icone.ico")
+        if os.path.exists(caminho):
+            try:
+                self.root.iconbitmap(default=caminho)
+            except tk.TclError:
+                pass  # sistema sem suporte a .ico; segue sem ícone
 
     # ------------------------------------------------------------------
     # Variáveis

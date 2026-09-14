@@ -184,6 +184,26 @@ class TesteInterface(unittest.TestCase):
         self.assertTrue(any("número" in texto for _, texto in self.alertas),
                         f"nenhum aviso sobre o número: {self.alertas}")
 
+    def test_abre_normalmente_quando_o_icone_existe(self):
+        """O .exe traz um icone.ico junto; a janela tem que aceitar isso."""
+        from ferramentas import gerar_icone
+
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(gui.__file__)))
+        caminho = os.path.join(raiz, "icone.ico")
+        criado = not os.path.exists(caminho)
+        if criado:
+            gerar_icone.salvar_ico(caminho, (16,))
+        try:
+            outra = tk.Toplevel(self.root)
+            outra.withdraw()
+            app = gui.AutoClickerApp(outra)   # não pode levantar exceção
+            self.assertEqual(outra.title(), "Auto Clicker")
+            app.encerrar()
+            outra.destroy()
+        finally:
+            if criado:
+                os.remove(caminho)
+
     def test_salva_as_preferencias_ao_fechar(self):
         self.app.var_modo.set(engine.MODE_HOLD_CLICK)
         self.app.var_periodico.set("1500")
