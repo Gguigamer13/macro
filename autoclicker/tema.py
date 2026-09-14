@@ -70,7 +70,7 @@ def aplicar_estilos(root: tk.Misc) -> dict:
                      tabmargins=(10, 8, 10, 0))
     estilo.configure("Gelo.TNotebook.Tab", background=CORES["azul_claro"],
                      foreground=CORES["azul_escuro"], borderwidth=0,
-                     padding=(18, 9), font=(fonte, 10, "bold"))
+                     padding=(12, 9), font=(fonte, 10, "bold"))
     estilo.map("Gelo.TNotebook.Tab",
                background=[("selected", CORES["cartao"]), ("active", CORES["azul_bebe"])],
                foreground=[("selected", CORES["azul_escuro"])],

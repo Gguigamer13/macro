@@ -70,7 +70,7 @@ Sobre o `.exe` gerado:
 
 ## Como usar
 
-A janela é dividida em cinco abas, além do rodapé fixo com o botão de iniciar,
+A janela é dividida em seis abas, além do rodapé fixo com o botão de iniciar,
 a luz de status e o contador de cliques.
 
 ### Aba **Modo** — o que o macro faz
@@ -139,6 +139,29 @@ manter a janela sempre visível.
 
 Suas preferências são salvas automaticamente ao fechar, em
 `%APPDATA%\AutoClickerBR\config.json`.
+
+### Aba **Atualizar**
+
+Mostra a versão instalada e busca no GitHub se saiu uma mais nova. Se sair, ela
+aparece com a lista do que mudou e o botão **"Baixar e instalar"** faz o
+resto. Por padrão o programa dá essa olhada sozinho ao abrir (dá para desligar
+na mesma aba) e só avisa quando realmente existe novidade.
+
+Como funciona por dentro:
+
+- o programa lê o arquivo `versao.json` publicado no repositório e compara com
+  a versão que você tem;
+- se for mais nova, baixa o `.zip` do repositório, confere se o pacote é mesmo
+  o Auto Clicker e troca os arquivos;
+- **a versão anterior fica guardada** na pasta `versao-anterior`, dentro da
+  pasta do programa — se algo sair errado é só copiar de volta;
+- se qualquer arquivo falhar na troca, tudo volta ao que era antes, sem deixar
+  a instalação pela metade.
+
+Rodando **pelo `.exe`**, trocar os arquivos `.py` não mudaria nada (eles estão
+embutidos no executável). Nesse caso o programa baixa a versão nova para a
+pasta `atualizacao`, ao lado do `.exe`, e avisa: é só entrar nela e rodar o
+`criar_exe.bat` para gerar o executável novo.
 
 ## Visual
 
@@ -224,11 +247,14 @@ autoclicker/
   hotkeys.py   atalhos globais de teclado
   config.py    salvar/carregar preferências
   tema.py      paleta, estilos e os elementos gráficos desenhados
-  gui.py       interface em tkinter: as cinco abas e o rodapé
+  atualizador.py  procura e instala a última versão pelo GitHub
+  gui.py       interface em tkinter: as seis abas e o rodapé
 ferramentas/
   gerar_icone.py   desenha o ícone e escreve o .ico byte a byte
+versao.json        versão publicada e o que mudou nela
 testes/
   test_engine.py   os três modos, o limite e a parada
   test_gui.py      montagem da janela, campos, atalhos e o ciclo completo
   test_icone.py    o formato do .ico e do .png gerados
+  test_atualizador.py  comparação de versões, instalação, backup e segurança
 ```

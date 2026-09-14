@@ -22,6 +22,7 @@ PADRAO: Dict[str, Any] = {
     "hotkey_start": "F6",
     "hotkey_pick": "F7",
     "sempre_visivel": True,
+    "verificar_atualizacao": True,
 }
 
 

@@ -64,7 +64,8 @@ class TesteInterface(unittest.TestCase):
         gui.messagebox.showerror = lambda *a, **k: self.alertas.append(("erro", a[1]))
         gui.messagebox.showwarning = lambda *a, **k: self.alertas.append(("aviso", a[1]))
         gui.messagebox.askyesno = lambda *a, **k: False
-        config.carregar = lambda: dict(config.PADRAO)
+        config.carregar = lambda: dict(config.PADRAO,
+                                       verificar_atualizacao=False)
         self.salvo = {}
         config.salvar = self.salvo.update
 
@@ -226,6 +227,51 @@ class TesteInterface(unittest.TestCase):
         finally:
             if criado:
                 os.remove(caminho)
+
+    # -- atualização -----------------------------------------------------
+
+    def _fingir_versao_publicada(self, versao, erro=None):
+        from autoclicker import atualizador
+
+        def falso(tempo_limite=15):
+            if erro:
+                raise atualizador.ErroDeAtualizacao(erro)
+            return atualizador.Atualizacao(
+                versao=versao, notas="coisas novas", data="2026-01-01",
+                branch="main", instalada=atualizador.versao_instalada())
+
+        self._procura_original = gui.atualizador.procurar_atualizacao
+        gui.atualizador.procurar_atualizacao = falso
+        self.addCleanup(setattr, gui.atualizador, "procurar_atualizacao",
+                        self._procura_original)
+
+    def test_mostra_quando_sai_versao_nova(self):
+        self._fingir_versao_publicada("99.0.0")
+        self.app.procurar_atualizacao()
+        achou = self._bombear(ate=lambda: "99.0.0" in self.app.var_status_atualizacao.get())
+        self.assertTrue(achou, self.app.var_status_atualizacao.get())
+        self.assertEqual(str(self.app.btn_instalar["state"]), "normal")
+        self.assertIn("coisas novas", self.app.var_notas.get())
+
+    def test_avisa_quando_ja_esta_na_ultima_versao(self):
+        from autoclicker import atualizador
+        self._fingir_versao_publicada(atualizador.versao_instalada())
+        self.app.procurar_atualizacao()
+        pronto = self._bombear(ate=lambda: "mais nova" in
+                               self.app.var_status_atualizacao.get())
+        self.assertTrue(pronto, self.app.var_status_atualizacao.get())
+        self.assertEqual(str(self.app.btn_instalar["state"]), "disabled")
+
+    def test_erro_de_internet_aparece_na_tela(self):
+        self._fingir_versao_publicada("", erro="Não consegui falar com o GitHub.")
+        self.app.procurar_atualizacao()
+        # "Procurando no GitHub..." também tem GitHub: espera a mensagem do erro
+        apareceu = self._bombear(ate=lambda: "Não consegui" in
+                                 self.app.var_status_atualizacao.get())
+        self.assertTrue(apareceu, self.app.var_status_atualizacao.get())
+        self.assertEqual(str(self.app.btn_procurar["state"]), "normal",
+                         "o botão tem que voltar a funcionar depois do erro")
+        self.assertTrue(any("GitHub" in texto for _, texto in self.alertas))
 
     def test_salva_as_preferencias_ao_fechar(self):
         self.app.var_modo.set(engine.MODE_HOLD_CLICK)

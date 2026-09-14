@@ -21,19 +21,39 @@ if not defined PY (
     if not errorlevel 1 set "PY=python"
 )
 if not defined PY goto sem_python
-echo  [1/4] Python encontrado.
+echo  [1/5] Python encontrado.
 
 REM ---------------------------------------------------------------
-REM  2. PyInstaller (e quem transforma o programa em .exe)
+REM  2. limpar sobras de builds anteriores
+REM     (cache velho do PyInstaller e .pyc de outra versao do Python
+REM      sao a causa mais comum de erro na hora de gerar o .exe)
 REM ---------------------------------------------------------------
-echo  [2/4] Preparando o PyInstaller. So demora na primeira vez...
-%PY% -m pip install --upgrade --disable-pip-version-check --quiet pyinstaller
-if errorlevel 1 goto sem_pyinstaller
+echo  [2/5] Limpando o cache de builds anteriores...
+taskkill /f /im AutoClicker.exe >nul 2>nul
+if exist "build" rd /s /q "build" 2>nul
+if exist "dist" rd /s /q "dist" 2>nul
+if exist "AutoClicker.spec" del /q "AutoClicker.spec" 2>nul
+for /d /r %%p in (__pycache__) do if exist "%%p" rd /s /q "%%p" 2>nul
+if exist "%APPDATA%\pyinstaller" rd /s /q "%APPDATA%\pyinstaller" 2>nul
+
+REM ---------------------------------------------------------------
+REM  3. PyInstaller (e quem transforma o programa em .exe)
+REM     --no-cache-dir evita o erro de cache do pip quando a pasta
+REM     AppData\Local\pip\Cache esta protegida ou corrompida
+REM ---------------------------------------------------------------
+echo  [3/5] Preparando o PyInstaller. So demora na primeira vez...
+%PY% -m pip install --upgrade --disable-pip-version-check --no-cache-dir --no-warn-script-location --quiet pyinstaller
+if errorlevel 1 (
+    echo        Primeira tentativa falhou; limpando o cache do pip...
+    %PY% -m pip cache purge >nul 2>nul
+    %PY% -m pip install --upgrade --disable-pip-version-check --no-cache-dir --force-reinstall --quiet pyinstaller
+    if errorlevel 1 goto sem_pyinstaller
+)
 
 REM ---------------------------------------------------------------
 REM  3. icone
 REM ---------------------------------------------------------------
-echo  [3/4] Desenhando o icone...
+echo  [4/5] Desenhando o icone...
 set EXTRA=
 %PY% "ferramentas\gerar_icone.py" "icone.ico" >nul
 if errorlevel 1 (
@@ -47,9 +67,9 @@ if errorlevel 1 (
 REM ---------------------------------------------------------------
 REM  4. gerar o executavel
 REM ---------------------------------------------------------------
-echo  [4/4] Gerando o executavel. Isso leva de 1 a 3 minutos...
-echo.
-%PY% -m PyInstaller --noconfirm --clean --onefile --windowed --name AutoClicker !EXTRA! --distpath "dist" --workpath "build\pyinstaller" --specpath "build" "%~dp0auto_clicker.py"
+echo  [5/5] Gerando o executavel. Isso leva de 1 a 3 minutos, aguarde...
+set "LOG=%TEMP%\autoclicker_build.log"
+%PY% -m PyInstaller --noconfirm --clean --onefile --windowed --name AutoClicker !EXTRA! --distpath "dist" --workpath "build\pyinstaller" --specpath "build" "%~dp0auto_clicker.py" > "!LOG!" 2>&1
 if errorlevel 1 goto falhou_build
 if not exist "dist\AutoClicker.exe" goto falhou_build
 
@@ -145,15 +165,27 @@ exit /b 1
 :sem_pyinstaller
 echo.
 echo  [ERRO] Nao consegui instalar o PyInstaller.
-echo  Verifique se o computador esta conectado a internet e tente de novo.
+echo.
+echo  Verifique se o computador esta conectado a internet.
+echo  Se o erro falar em cache ou permissao, rode este comando numa
+echo  janela de Prompt de Comando e tente de novo:
+echo      python -m pip install --no-cache-dir --user pyinstaller
 echo.
 pause
 exit /b 1
 
 :falhou_build
 echo.
-echo  [ERRO] A criacao do executavel falhou. As mensagens acima dizem o motivo.
-echo  Dica: feche o AutoClicker.exe se ele estiver aberto e rode de novo.
+echo  [ERRO] A criacao do executavel falhou. Ultimas linhas do log:
+echo  ----------------------------------------------------------
+powershell -NoProfile -Command "if (Test-Path $env:TEMP'\autoclicker_build.log') { Get-Content $env:TEMP'\autoclicker_build.log' -Tail 25 }" 2>nul
+echo  ----------------------------------------------------------
+echo  O log completo esta em: %TEMP%\autoclicker_build.log
+echo.
+echo  As causas mais comuns:
+echo   - o AutoClicker.exe estava aberto  (feche e rode de novo)
+echo   - antivirus bloqueando a pasta dist  (libere a pasta e tente de novo)
+echo   - a pasta do projeto esta dentro do OneDrive pausado ou sem espaco
 echo.
 pause
 exit /b 1

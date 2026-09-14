@@ -9,7 +9,10 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Optional
 
-from . import config, engine, tema, winapi
+import threading
+import webbrowser
+
+from . import atualizador, config, engine, tema, winapi
 from .hotkeys import HotkeyListener
 from .tema import CORES
 
@@ -90,6 +93,9 @@ class AutoClickerApp:
         self._atualizar_cps()
         self.diagrama.mostrar(self.var_alvo.get())
         self._agendamento = self.root.after(40, self._processar_fila)
+        if self.var_auto_atualizar.get():
+            # espera a janela aparecer antes de ir na internet
+            self.root.after(1500, lambda: self.procurar_atualizacao(silencioso=True))
 
     def _aplicar_icone(self) -> None:
         """Usa o icone.ico na barra de título, se ele estiver por perto.
@@ -128,6 +134,12 @@ class AutoClickerApp:
         self.var_tecla_iniciar = tk.StringVar(value=c["hotkey_start"])
         self.var_tecla_capturar = tk.StringVar(value=c["hotkey_pick"])
         self.var_topmost = tk.BooleanVar(value=bool(c["sempre_visivel"]))
+        self.var_auto_atualizar = tk.BooleanVar(value=bool(c["verificar_atualizacao"]))
+        self.var_versao = tk.StringVar(
+            value=f"Versão instalada: {atualizador.versao_instalada()}")
+        self.var_status_atualizacao = tk.StringVar(
+            value="Clique em “Procurar atualização” para ver se saiu versão nova.")
+        self.var_notas = tk.StringVar(value="")
         self.var_status = tk.StringVar(value="Parado")
         self.var_cps = tk.StringVar(value="")
         self.var_contador = tk.StringVar(value="Cliques: 0")
@@ -159,6 +171,7 @@ class AutoClickerApp:
         self.abas.add(self._aba_destino(), text="  Destino  ")
         self.abas.add(self._aba_janela(), text="  Ponto  ")
         self.abas.add(self._aba_atalhos(), text="  Atalhos  ")
+        self.abas.add(self._aba_atualizar(), text="  Atualizar  ")
 
         self._rodape().pack(fill="x", padx=14, pady=(10, 0))
         tema.MarcaDagua(self.root, self.fontes).pack(fill="x", side="bottom")
@@ -370,6 +383,119 @@ class AutoClickerApp:
                     f"{config.caminho()}",
                     self.fontes, "suave", justify="left").pack(anchor="w", pady=(8, 0))
         return aba
+
+    # -- aba 6: atualizar ------------------------------------------------
+
+    def _aba_atualizar(self) -> tk.Frame:
+        aba = self._nova_aba()
+        tema.Dica(aba, self.fontes,
+                  "A atualização vem direto do repositório do programa no GitHub "
+                  f"({atualizador.REPOSITORIO}). A versão anterior fica guardada numa "
+                  "pasta ao lado, caso você queira voltar.",
+                  "repetir").pack(fill="x", side="bottom", padx=14, pady=14)
+
+        cartao = tema.Cartao(aba, self.fontes, "Versão do programa", "repetir")
+        cartao.pack(fill="x", padx=14, pady=(14, 0))
+        corpo = cartao.corpo
+
+        tk.Label(corpo, textvariable=self.var_versao, font=self.fontes["forte"],
+                 bg=CORES["cartao"], fg=CORES["azul_escuro"]).pack(anchor="w")
+        tk.Label(corpo, textvariable=self.var_status_atualizacao,
+                 font=self.fontes["normal"], bg=CORES["cartao"], fg=CORES["texto"],
+                 wraplength=540, justify="left").pack(anchor="w", pady=(6, 0))
+        tk.Label(corpo, textvariable=self.var_notas, font=self.fontes["pequena"],
+                 bg=CORES["cartao"], fg=CORES["texto_suave"], wraplength=540,
+                 justify="left").pack(anchor="w", pady=(4, 0))
+
+        linha = tk.Frame(corpo, bg=CORES["cartao"])
+        linha.pack(fill="x", pady=(12, 0))
+        self.btn_procurar = tema.Botao(linha, self.fontes, "Procurar atualização",
+                                       self.procurar_atualizacao, principal=True,
+                                       padx=10, pady=3)
+        self.btn_procurar.pack(side="left")
+        self.btn_instalar = tema.Botao(linha, self.fontes, "Baixar e instalar",
+                                       self.instalar_atualizacao, padx=10, pady=3,
+                                       state="disabled")
+        self.btn_instalar.pack(side="left", padx=(8, 0))
+        tema.Botao(linha, self.fontes, "Abrir no GitHub",
+                   lambda: webbrowser.open(atualizador.URL_PAGINA.format(
+                       repo=atualizador.REPOSITORIO)), padx=10, pady=3
+                   ).pack(side="left", padx=(8, 0))
+
+        tk.Checkbutton(corpo, text="Procurar atualização quando eu abrir o programa",
+                       variable=self.var_auto_atualizar, font=self.fontes["normal"],
+                       bg=CORES["cartao"], fg=CORES["texto"], selectcolor=CORES["cartao"],
+                       activebackground=CORES["cartao"],
+                       activeforeground=CORES["azul_escuro"], relief="flat", bd=0,
+                       highlightthickness=0, anchor="w", cursor="hand2"
+                       ).pack(fill="x", pady=(12, 0))
+        return aba
+
+    # -- atualização -----------------------------------------------------
+
+    def procurar_atualizacao(self, silencioso: bool = False) -> None:
+        """Pergunta ao GitHub qual é a última versão, sem travar a tela."""
+        if getattr(self, "_procurando", False):
+            return
+        self._procurando = True
+        self.btn_procurar.configure(state="disabled")
+        self.var_status_atualizacao.set("Procurando no GitHub...")
+        self.var_notas.set("")
+
+        def trabalho():
+            try:
+                info = atualizador.procurar_atualizacao()
+                self.fila.put(("atualizacao", info, silencioso))
+            except atualizador.ErroDeAtualizacao as erro:
+                self.fila.put(("atualizacao_erro", str(erro), silencioso))
+
+        threading.Thread(target=trabalho, name="procurar-atualizacao",
+                         daemon=True).start()
+
+    def instalar_atualizacao(self) -> None:
+        info = getattr(self, "_atualizacao", None)
+        if info is None:
+            return
+        if self.motor.running:
+            self.parar()
+        if not messagebox.askyesno(
+                "Auto Clicker",
+                f"Baixar e instalar a versão {info.versao}?\n\n"
+                "Os arquivos do programa serão trocados pelos novos e a versão "
+                "atual fica guardada numa pasta ao lado.", parent=self.root):
+            return
+        self.btn_instalar.configure(state="disabled")
+        self.btn_procurar.configure(state="disabled")
+
+        def trabalho():
+            try:
+                mensagem = atualizador.atualizar(
+                    info, aviso=lambda texto: self.fila.put(("atualizacao_passo", texto)))
+                self.fila.put(("atualizacao_pronta", mensagem))
+            except atualizador.ErroDeAtualizacao as erro:
+                self.fila.put(("atualizacao_erro", str(erro), False))
+
+        threading.Thread(target=trabalho, name="instalar-atualizacao",
+                         daemon=True).start()
+
+    def _mostrar_atualizacao(self, info, silencioso: bool) -> None:
+        self._procurando = False
+        self._atualizacao = info
+        self.btn_procurar.configure(state="normal")
+        if info.mais_nova:
+            self.var_status_atualizacao.set(
+                f"Saiu a versão {info.versao}! A sua é a {info.instalada}.")
+            self.var_notas.set(info.notas)
+            self.btn_instalar.configure(state="normal")
+            self._definir_status(f"Atualização disponível: {info.versao}",
+                                 CORES["verde"])
+            if silencioso:
+                self.abas.select(5)
+        else:
+            self.var_status_atualizacao.set(
+                f"Você já está na versão mais nova ({info.instalada}).")
+            self.var_notas.set("")
+            self.btn_instalar.configure(state="disabled")
 
     # -- linhas de escolha (modo / destino) ------------------------------
 
@@ -770,9 +896,29 @@ class AutoClickerApp:
                     self.alternar()
                 elif evento[0] == "capturar":
                     self._capturar_ponto()
+                elif evento[0] == "atualizacao":
+                    self._mostrar_atualizacao(evento[1], evento[2])
+                elif evento[0] == "atualizacao_passo":
+                    self.var_status_atualizacao.set(evento[1])
+                elif evento[0] == "atualizacao_pronta":
+                    self._procurando = False
+                    self.btn_procurar.configure(state="normal")
+                    self.var_status_atualizacao.set(evento[1])
+                    self.var_notas.set("")
+                    messagebox.showinfo("Auto Clicker", evento[1], parent=self.root)
+                elif evento[0] == "atualizacao_erro":
+                    self._procurando = False
+                    self.btn_procurar.configure(state="normal")
+                    self.var_status_atualizacao.set(evento[1])
+                    if not evento[2]:
+                        messagebox.showerror("Auto Clicker", evento[1],
+                                             parent=self.root)
         except queue.Empty:
             pass
         self._agendamento = self.root.after(40, self._processar_fila)
+        if self.var_auto_atualizar.get():
+            # espera a janela aparecer antes de ir na internet
+            self.root.after(1500, lambda: self.procurar_atualizacao(silencioso=True))
 
     # ------------------------------------------------------------------
     # Atalhos globais
@@ -818,6 +964,7 @@ class AutoClickerApp:
             "hotkey_start": self.var_tecla_iniciar.get(),
             "hotkey_pick": self.var_tecla_capturar.get(),
             "sempre_visivel": bool(self.var_topmost.get()),
+            "verificar_atualizacao": bool(self.var_auto_atualizar.get()),
         })
 
     def encerrar(self) -> None:
