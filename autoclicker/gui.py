@@ -1,4 +1,4 @@
-"""Interface do Auto Clicker (tkinter)."""
+"""Interface do Auto Clicker: abas, tema branco gelo + azul bebê."""
 
 from __future__ import annotations
 
@@ -8,11 +8,31 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Optional
 
-from . import config, engine, winapi
+from . import config, engine, tema, winapi
 from .hotkeys import HotkeyListener
+from .tema import CORES
 
 BOTOES = [("Esquerdo", "left"), ("Direito", "right"), ("Meio", "middle")]
 TECLAS = list(winapi.VK_CODES.keys())
+
+# título, descrição e ícone de cada modo, na ordem em que aparecem na aba
+MODOS = [
+    (engine.MODE_CLICK, "Auto click",
+     "Clica sem parar, no ritmo que você escolher na aba Tempos.", "repetir"),
+    (engine.MODE_HOLD, "Segurar botão",
+     "Aperta o botão e mantém pressionado até você mandar parar.", "mouse_cheio"),
+    (engine.MODE_HOLD_CLICK, "Segurar + clique periódico",
+     "Fica com o botão pressionado e, de tempos em tempos, solta e aperta de novo.",
+     "relogio"),
+]
+
+DESTINOS = [
+    (engine.TARGET_CURSOR, "Na posição atual do mouse",
+     "O clique normal: acontece onde o cursor estiver naquele momento.", "cursor"),
+    (engine.TARGET_WINDOW, "Em uma janela, em segundo plano",
+     "O clique vai direto para a janela escolhida e o seu mouse continua livre.",
+     "janela"),
+]
 
 
 class AutoClickerApp:
@@ -26,20 +46,28 @@ class AutoClickerApp:
         self.janelas: list[dict] = []
         self.hwnd_alvo: int = 0
         self.titulo_alvo: str = ""
+        self._linhas_modo: list[dict] = []
+        self._linhas_destino: list[dict] = []
 
         root.title("Auto Clicker")
+        root.configure(bg=CORES["gelo"])
         root.resizable(False, False)
         root.protocol("WM_DELETE_WINDOW", self._fechar)
+        self.fontes = tema.aplicar_estilos(root)
 
         self._criar_variaveis()
         self._montar_interface()
         self._aplicar_atalhos()
         self._atualizar_lista_janelas()
+        self._realcar_escolhas()
         self._atualizar_habilitados()
+        self._atualizar_mapa()
+        self._atualizar_cps()
+        self.diagrama.mostrar(self.var_alvo.get())
         self._agendamento = self.root.after(40, self._processar_fila)
 
     # ------------------------------------------------------------------
-    # Construção da tela
+    # Variáveis
     # ------------------------------------------------------------------
 
     def _criar_variaveis(self) -> None:
@@ -64,154 +92,310 @@ class AutoClickerApp:
         self.var_detalhe_alvo = tk.StringVar(value="Nenhuma janela selecionada.")
 
         self.var_intervalo.trace_add("write", lambda *_: self._atualizar_cps())
-        self.var_modo.trace_add("write", lambda *_: self._atualizar_habilitados())
-        self.var_alvo.trace_add("write", lambda *_: self._atualizar_habilitados())
+        self.var_modo.trace_add("write", lambda *_: self._modo_mudou())
+        self.var_alvo.trace_add("write", lambda *_: self._modo_mudou())
+        self.var_x.trace_add("write", lambda *_: self._atualizar_mapa())
+        self.var_y.trace_add("write", lambda *_: self._atualizar_mapa())
         self.var_topmost.trace_add("write", lambda *_: self._aplicar_topmost())
         self._aplicar_topmost()
         self._atualizar_cps()
 
+    # ------------------------------------------------------------------
+    # Montagem da tela
+    # ------------------------------------------------------------------
+
     def _montar_interface(self) -> None:
-        principal = ttk.Frame(self.root, padding=10)
-        principal.grid(row=0, column=0, sticky="nsew")
+        self.cabecalho = tema.Cabecalho(self.root, self.fontes)
+        self.cabecalho.pack(fill="x")
 
-        self._secao_modo(principal).grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        self._secao_destino(principal).grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        self._secao_atalhos(principal).grid(row=2, column=0, sticky="ew", pady=(0, 8))
-        self._secao_controles(principal).grid(row=3, column=0, sticky="ew")
+        self.abas = ttk.Notebook(self.root, style="Gelo.TNotebook")
+        self.abas.pack(fill="both", expand=True, padx=14, pady=(10, 0))
+        self.abas.add(self._aba_modo(), text="  Modo  ")
+        self.abas.add(self._aba_tempos(), text="  Tempos  ")
+        self.abas.add(self._aba_destino(), text="  Destino  ")
+        self.abas.add(self._aba_janela(), text="  Janela  ")
+        self.abas.add(self._aba_atalhos(), text="  Atalhos  ")
 
-    def _secao_modo(self, pai: ttk.Frame) -> ttk.Widget:
-        caixa = ttk.LabelFrame(pai, text=" 1. O que o macro faz ", padding=10)
+        self._rodape().pack(fill="x", padx=14, pady=(10, 0))
+        tema.MarcaDagua(self.root, self.fontes).pack(fill="x", side="bottom")
 
-        ttk.Radiobutton(caixa, text="Auto click — clica sem parar",
-                        variable=self.var_modo, value=engine.MODE_CLICK
-                        ).grid(row=0, column=0, columnspan=4, sticky="w")
-        ttk.Radiobutton(caixa, text="Segurar botão — mantém o botão pressionado",
-                        variable=self.var_modo, value=engine.MODE_HOLD
-                        ).grid(row=1, column=0, columnspan=4, sticky="w")
-        ttk.Radiobutton(caixa, text="Segurar + clique periódico — segura e clica de tempos em tempos",
-                        variable=self.var_modo, value=engine.MODE_HOLD_CLICK
-                        ).grid(row=2, column=0, columnspan=4, sticky="w")
+    def _nova_aba(self) -> tk.Frame:
+        quadro = tk.Frame(self.abas, bg=CORES["cartao"], width=628, height=436)
+        quadro.pack_propagate(False)
+        return quadro
 
-        ttk.Separator(caixa, orient="horizontal").grid(
-            row=3, column=0, columnspan=4, sticky="ew", pady=8)
+    # -- aba 1: modo -----------------------------------------------------
 
-        ttk.Label(caixa, text="Botão do mouse:").grid(row=4, column=0, sticky="w")
-        combo = ttk.Combobox(caixa, state="readonly", width=12,
-                             values=[nome for nome, _ in BOTOES])
-        combo.set(next((nome for nome, valor in BOTOES if valor == self.var_botao.get()),
-                       BOTOES[0][0]))
-        combo.bind("<<ComboboxSelected>>",
-                   lambda _e: self.var_botao.set(dict((n, v) for n, v in BOTOES)[combo.get()]))
-        combo.grid(row=4, column=1, sticky="w", padx=(6, 0))
+    def _aba_modo(self) -> tk.Frame:
+        aba = self._nova_aba()
+        cartao = tema.Cartao(aba, self.fontes, "O que o macro faz", "repetir")
+        cartao.pack(fill="x", padx=14, pady=(14, 10))
+        for valor, titulo, descricao, icone in MODOS:
+            self._linhas_modo.append(
+                self._linha_escolha(cartao.corpo, self.var_modo, valor, titulo,
+                                    descricao, icone))
 
-        ttk.Label(caixa, text="Intervalo entre cliques:").grid(row=5, column=0, sticky="w", pady=(6, 0))
-        self.ent_intervalo = ttk.Entry(caixa, textvariable=self.var_intervalo, width=8)
-        self.ent_intervalo.grid(row=5, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
-        ttk.Label(caixa, text="ms").grid(row=5, column=2, sticky="w")
-        ttk.Label(caixa, textvariable=self.var_cps, foreground="#555").grid(
-            row=5, column=3, sticky="w", padx=(6, 0))
+        tema.Dica(aba, self.fontes,
+                  "O modo \u201csegurar + clique periódico\u201d é o mesmo que ficar com o "
+                  "botão apertado e dar um clique de vez em quando, sem largar.",
+                  "repetir").pack(fill="x", side="bottom", padx=14, pady=14)
 
-        ttk.Label(caixa, text="Variação aleatória:").grid(row=6, column=0, sticky="w", pady=(6, 0))
-        self.ent_variacao = ttk.Entry(caixa, textvariable=self.var_variacao, width=8)
-        self.ent_variacao.grid(row=6, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
-        ttk.Label(caixa, text="%  (deixa o ritmo menos robótico)").grid(
-            row=6, column=2, columnspan=2, sticky="w")
+        cartao2 = tema.Cartao(aba, self.fontes, "Botão e parada", "mouse")
+        cartao2.pack(fill="x", padx=14)
+        linha = tk.Frame(cartao2.corpo, bg=CORES["cartao"])
+        linha.pack(fill="x", pady=3)
+        tema.rotulo(linha, "Botão do mouse", self.fontes, width=20,
+                    anchor="w").pack(side="left")
+        self.combo_botao = ttk.Combobox(linha, state="readonly", width=12,
+                                        style="Gelo.TCombobox",
+                                        values=[nome for nome, _ in BOTOES])
+        self.combo_botao.set(next((nome for nome, valor in BOTOES
+                                   if valor == self.var_botao.get()), BOTOES[0][0]))
+        self.combo_botao.bind("<<ComboboxSelected>>", self._escolher_botao)
+        self.combo_botao.pack(side="left")
+        tema.rotulo(linha, "vale para os três modos", self.fontes,
+                    "suave").pack(side="left", padx=(10, 0))
+        self.ent_limite = self._campo(
+            cartao2.corpo, "Parar depois de", self.var_limite, "cliques",
+            "0 = sem limite")
+        return aba
 
-        ttk.Label(caixa, text="Clicar a cada:").grid(row=7, column=0, sticky="w", pady=(6, 0))
-        self.ent_periodico = ttk.Entry(caixa, textvariable=self.var_periodico, width=8)
-        self.ent_periodico.grid(row=7, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
-        ttk.Label(caixa, text="ms  (enquanto segura o botão)").grid(
-            row=7, column=2, columnspan=2, sticky="w")
+    # -- aba 2: tempos ---------------------------------------------------
 
-        ttk.Label(caixa, text="Duração de cada clique:").grid(row=8, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(caixa, textvariable=self.var_duracao, width=8).grid(
-            row=8, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
-        ttk.Label(caixa, text="ms").grid(row=8, column=2, sticky="w")
+    def _aba_tempos(self) -> tk.Frame:
+        aba = self._nova_aba()
+        cartao = tema.Cartao(aba, self.fontes, "Ritmo dos cliques", "relogio")
+        cartao.pack(fill="x", padx=14, pady=(14, 10))
+        self.ent_intervalo = self._campo(
+            cartao.corpo, "Intervalo entre cliques", self.var_intervalo, "ms",
+            "de um clique para o outro")
+        tk.Label(cartao.corpo, textvariable=self.var_cps, font=self.fontes["forte"],
+                 bg=CORES["cartao"], fg=CORES["azul_escuro"]).pack(anchor="w", pady=(2, 0))
+        self.velocimetro = tema.Velocimetro(cartao.corpo, self.fontes)
+        self.velocimetro.pack(fill="x", pady=(0, 6))
+        self.ent_variacao = self._campo(
+            cartao.corpo, "Variação aleatória", self.var_variacao, "%",
+            "0 = sempre no mesmo ritmo")
 
-        ttk.Label(caixa, text="Parar depois de:").grid(row=9, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(caixa, textvariable=self.var_limite, width=8).grid(
-            row=9, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
-        ttk.Label(caixa, text="cliques  (0 = sem limite)").grid(
-            row=9, column=2, columnspan=2, sticky="w")
-        return caixa
+        tema.Dica(aba, self.fontes,
+                  "100 ms dá 10 cliques por segundo. Abaixo de 20 ms muitos programas "
+                  "começam a perder cliques, então nem sempre vale a pena acelerar mais.",
+                  "relogio").pack(fill="x", side="bottom", padx=14, pady=14)
 
-    def _secao_destino(self, pai: ttk.Frame) -> ttk.Widget:
-        caixa = ttk.LabelFrame(pai, text=" 2. Onde os cliques vão cair ", padding=10)
+        cartao2 = tema.Cartao(aba, self.fontes, "Ajustes finos", "repetir")
+        cartao2.pack(fill="x", padx=14)
+        self.ent_periodico = self._campo(
+            cartao2.corpo, "Clicar a cada", self.var_periodico, "ms",
+            "só no modo segurar + periódico")
+        self.ent_duracao = self._campo(
+            cartao2.corpo, "Duração de cada clique", self.var_duracao, "ms",
+            "aumente se os cliques forem ignorados")
+        return aba
 
-        ttk.Radiobutton(caixa, text="Na posição atual do mouse (clique normal)",
-                        variable=self.var_alvo, value=engine.TARGET_CURSOR
-                        ).grid(row=0, column=0, columnspan=3, sticky="w")
-        ttk.Radiobutton(caixa, text="Em uma janela escolhida, em segundo plano (mouse continua livre)",
-                        variable=self.var_alvo, value=engine.TARGET_WINDOW
-                        ).grid(row=1, column=0, columnspan=3, sticky="w")
+    def _campo(self, pai: tk.Misc, titulo: str, variavel: tk.StringVar, unidade: str,
+               dica: str) -> tk.Entry:
+        linha = tk.Frame(pai, bg=CORES["cartao"])
+        linha.pack(fill="x", pady=3)
+        tema.rotulo(linha, titulo, self.fontes, width=20, anchor="w").pack(side="left")
+        campo = tema.entrada(linha, variavel, self.fontes)
+        campo.pack(side="left")
+        tema.rotulo(linha, unidade, self.fontes, "suave").pack(side="left", padx=(6, 10))
+        tema.rotulo(linha, dica, self.fontes, "suave").pack(side="left")
+        return campo
 
-        self.combo_janelas = ttk.Combobox(caixa, textvariable=self.var_janela,
-                                          state="readonly", width=52)
-        self.combo_janelas.grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+    # -- aba 3: destino --------------------------------------------------
+
+    def _aba_destino(self) -> tk.Frame:
+        aba = self._nova_aba()
+        cartao = tema.Cartao(aba, self.fontes, "Para onde vão os cliques", "alvo")
+        cartao.pack(fill="x", padx=14, pady=(14, 0))
+        for valor, titulo, descricao, icone in DESTINOS:
+            self._linhas_destino.append(
+                self._linha_escolha(cartao.corpo, self.var_alvo, valor, titulo,
+                                    descricao, icone))
+        self.diagrama = tema.Diagrama(cartao.corpo, self.fontes)
+        self.diagrama.pack(fill="x", pady=(10, 0))
+
+        tema.Dica(aba, self.fontes,
+                  "No modo em segundo plano escolha a janela e o ponto do clique na aba "
+                  "Janela, ao lado.", "janela").pack(fill="x", side="bottom",
+                                                     padx=14, pady=14)
+        return aba
+
+    # -- aba 4: janela alvo ----------------------------------------------
+
+    def _aba_janela(self) -> tk.Frame:
+        aba = self._nova_aba()
+        cartao = tema.Cartao(aba, self.fontes, "Janela e ponto do clique", "janela")
+        cartao.pack(fill="x", padx=14, pady=(14, 0))
+        corpo = cartao.corpo
+
+        linha1 = tk.Frame(corpo, bg=CORES["cartao"])
+        linha1.pack(fill="x")
+        self.combo_janelas = ttk.Combobox(linha1, textvariable=self.var_janela,
+                                          state="readonly", width=46,
+                                          style="Gelo.TCombobox")
+        self.combo_janelas.pack(side="left")
         self.combo_janelas.bind("<<ComboboxSelected>>", self._selecionar_janela_da_lista)
-        self.btn_atualizar = ttk.Button(caixa, text="Atualizar",
-                                        command=self._atualizar_lista_janelas)
-        self.btn_atualizar.grid(row=2, column=2, sticky="w", padx=(6, 0), pady=(8, 0))
+        self.btn_atualizar = tema.Botao(linha1, self.fontes, "Atualizar",
+                                        self._atualizar_lista_janelas, padx=10)
+        self.btn_atualizar.pack(side="left", padx=(8, 0))
 
-        linha = ttk.Frame(caixa)
-        linha.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        self.btn_capturar = ttk.Button(linha, text="Capturar janela e ponto",
-                                       command=self._capturar_ponto)
+        linha2 = tk.Frame(corpo, bg=CORES["cartao"])
+        linha2.pack(fill="x", pady=(8, 0))
+        self.btn_capturar = tema.Botao(linha2, self.fontes, "Capturar janela e ponto",
+                                       self._capturar_ponto, principal=True,
+                                       padx=10, pady=3)
         self.btn_capturar.pack(side="left")
-        ttk.Label(linha, text="  ponto X:").pack(side="left")
-        self.ent_x = ttk.Entry(linha, textvariable=self.var_x, width=7)
-        self.ent_x.pack(side="left", padx=(4, 0))
-        ttk.Label(linha, text=" Y:").pack(side="left")
-        self.ent_y = ttk.Entry(linha, textvariable=self.var_y, width=7)
-        self.ent_y.pack(side="left", padx=(4, 0))
+        tema.rotulo(linha2, "X", self.fontes, "suave").pack(side="left", padx=(12, 3))
+        self.ent_x = tema.entrada(linha2, self.var_x, self.fontes, largura=7)
+        self.ent_x.pack(side="left")
+        tema.rotulo(linha2, "Y", self.fontes, "suave").pack(side="left", padx=(8, 3))
+        self.ent_y = tema.entrada(linha2, self.var_y, self.fontes, largura=7)
+        self.ent_y.pack(side="left")
 
-        linha2 = ttk.Frame(caixa)
-        linha2.grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
-        self.btn_centro = ttk.Button(linha2, text="Usar o centro da janela",
-                                     command=self._usar_centro)
+        linha3 = tk.Frame(corpo, bg=CORES["cartao"])
+        linha3.pack(fill="x", pady=(8, 0))
+        self.btn_centro = tema.Botao(linha3, self.fontes, "Usar o centro da janela",
+                                     self._usar_centro, padx=8)
         self.btn_centro.pack(side="left")
-        self.btn_testar = ttk.Button(linha2, text="Testar 1 clique",
-                                     command=self._testar_clique)
-        self.btn_testar.pack(side="left", padx=(6, 0))
+        self.btn_testar = tema.Botao(linha3, self.fontes, "Testar 1 clique",
+                                     self._testar_clique, padx=8)
+        self.btn_testar.pack(side="left", padx=(8, 0))
+        tk.Label(linha3, textvariable=self.var_detalhe_alvo, font=self.fontes["pequena"],
+                 bg=CORES["cartao"], fg=CORES["texto_suave"], anchor="w",
+                 justify="left").pack(side="left", padx=(12, 0))
 
-        ttk.Label(caixa, textvariable=self.var_detalhe_alvo, foreground="#555",
-                  wraplength=430, justify="left").grid(
-            row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        return caixa
+        self.mapa = tema.MapaAlvo(corpo, self.fontes)
+        self.mapa.pack(fill="x", pady=(10, 0))
 
-    def _secao_atalhos(self, pai: ttk.Frame) -> ttk.Widget:
-        caixa = ttk.LabelFrame(pai, text=" 3. Atalhos do teclado ", padding=10)
+        tema.Dica(aba, self.fontes,
+                  "Use “Testar 1 clique” antes de soltar o macro: dá para ver na hora se "
+                  "a janela aceita clique em segundo plano.",
+                  "alvo").pack(fill="x", side="bottom", padx=14, pady=14)
+        return aba
 
-        ttk.Label(caixa, text="Iniciar / parar:").grid(row=0, column=0, sticky="w")
-        combo1 = ttk.Combobox(caixa, textvariable=self.var_tecla_iniciar, values=TECLAS,
-                              state="readonly", width=10)
-        combo1.grid(row=0, column=1, sticky="w", padx=(6, 12))
+    # -- aba 5: atalhos --------------------------------------------------
+
+    def _aba_atalhos(self) -> tk.Frame:
+        aba = self._nova_aba()
+        cartao = tema.Cartao(aba, self.fontes, "Teclas de atalho", "teclado")
+        cartao.pack(fill="x", padx=14, pady=(14, 10))
+
+        linha1 = tk.Frame(cartao.corpo, bg=CORES["cartao"])
+        linha1.pack(fill="x", pady=3)
+        tema.rotulo(linha1, "Iniciar / parar", self.fontes, width=20,
+                    anchor="w").pack(side="left")
+        combo1 = ttk.Combobox(linha1, textvariable=self.var_tecla_iniciar, values=TECLAS,
+                              state="readonly", width=12, style="Gelo.TCombobox")
+        combo1.pack(side="left")
         combo1.bind("<<ComboboxSelected>>", lambda _e: self._aplicar_atalhos())
+        tema.rotulo(linha1, "mesmo com outro programa na frente",
+                    self.fontes, "suave").pack(side="left", padx=(10, 0))
 
-        ttk.Label(caixa, text="Capturar janela e ponto:").grid(row=0, column=2, sticky="w")
-        combo2 = ttk.Combobox(caixa, textvariable=self.var_tecla_capturar, values=TECLAS,
-                              state="readonly", width=10)
-        combo2.grid(row=0, column=3, sticky="w", padx=(6, 0))
+        linha2 = tk.Frame(cartao.corpo, bg=CORES["cartao"])
+        linha2.pack(fill="x", pady=3)
+        tema.rotulo(linha2, "Capturar janela e ponto", self.fontes, width=20,
+                    anchor="w").pack(side="left")
+        combo2 = ttk.Combobox(linha2, textvariable=self.var_tecla_capturar, values=TECLAS,
+                              state="readonly", width=12, style="Gelo.TCombobox")
+        combo2.pack(side="left")
         combo2.bind("<<ComboboxSelected>>", lambda _e: self._aplicar_atalhos())
+        tema.rotulo(linha2, "passe o mouse no ponto e aperte a tecla",
+                    self.fontes, "suave").pack(side="left", padx=(10, 0))
 
-        ttk.Checkbutton(caixa, text="Manter esta janela sempre visível",
-                        variable=self.var_topmost).grid(
-            row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
-        return caixa
+        tema.Dica(aba, self.fontes,
+                  "O atalho de iniciar/parar funciona mesmo com outro programa na frente — "
+                  "é assim que você sai do modo \u201csegurar\u201d sem ficar com o botão preso.",
+                  "teclado").pack(fill="x", side="bottom", padx=14, pady=14)
 
-    def _secao_controles(self, pai: ttk.Frame) -> ttk.Widget:
-        caixa = ttk.Frame(pai)
-        self.btn_iniciar = ttk.Button(caixa, text="INICIAR", command=self.iniciar)
-        self.btn_iniciar.grid(row=0, column=0, ipadx=18, ipady=4)
-        self.btn_parar = ttk.Button(caixa, text="PARAR", command=self.parar, state="disabled")
-        self.btn_parar.grid(row=0, column=1, ipadx=18, ipady=4, padx=(8, 0))
+        cartao2 = tema.Cartao(aba, self.fontes, "Preferências", "janela")
+        cartao2.pack(fill="x", padx=14)
+        tk.Checkbutton(cartao2.corpo, text="Manter esta janela sempre visível",
+                       variable=self.var_topmost, font=self.fontes["normal"],
+                       bg=CORES["cartao"], fg=CORES["texto"], selectcolor=CORES["cartao"],
+                       activebackground=CORES["cartao"], activeforeground=CORES["azul_escuro"],
+                       relief="flat", bd=0, highlightthickness=0, anchor="w",
+                       cursor="hand2").pack(fill="x")
+        tema.rotulo(cartao2.corpo,
+                    "As suas escolhas são salvas sozinhas ao fechar o programa, em\n"
+                    f"{config.caminho()}",
+                    self.fontes, "suave", justify="left").pack(anchor="w", pady=(8, 0))
+        return aba
 
-        self.lbl_status = ttk.Label(caixa, textvariable=self.var_status,
-                                    font=("Segoe UI", 10, "bold"))
-        self.lbl_status.grid(row=0, column=2, sticky="e", padx=(16, 0))
-        ttk.Label(caixa, textvariable=self.var_contador, foreground="#555").grid(
-            row=0, column=3, sticky="e", padx=(12, 0))
-        return caixa
+    # -- linhas de escolha (modo / destino) ------------------------------
+
+    def _linha_escolha(self, pai: tk.Misc, variavel: tk.StringVar, valor: str,
+                       titulo: str, descricao: str, icone: str) -> dict:
+        linha = tk.Frame(pai, bg=CORES["cartao"], highlightthickness=1,
+                         highlightbackground=CORES["cartao"], cursor="hand2")
+        linha.pack(fill="x", pady=2)
+
+        desenho = tk.Canvas(linha, width=30, height=34, bg=CORES["cartao"],
+                            highlightthickness=0)
+        if icone == "mouse_cheio":
+            tema.icone_mouse(desenho, 15, 17, CORES["azul_escuro"], cheio=True)
+        else:
+            tema.ICONES[icone](desenho, 15, 17, CORES["azul_escuro"])
+        desenho.pack(side="left", padx=(6, 4), pady=4)
+
+        textos = tk.Frame(linha, bg=CORES["cartao"])
+        textos.pack(side="left", fill="x", expand=True, pady=4)
+        botao = tema.radio(textos, titulo, variavel, valor, self.fontes)
+        botao.pack(fill="x")
+        legenda = tema.rotulo(textos, descricao, self.fontes, "suave",
+                              anchor="w", justify="left")
+        legenda.pack(fill="x", padx=(22, 0))
+
+        for widget in (linha, desenho, textos, legenda):
+            widget.bind("<Button-1>", lambda _e, v=valor: variavel.set(v))
+        return {"quadro": linha, "valor": valor, "variavel": variavel,
+                "pintar": [linha, desenho, textos, botao, legenda]}
+
+    def _realcar_escolhas(self) -> None:
+        """Pinta de azul bebê a opção selecionada em cada lista."""
+        for linha in self._linhas_modo + self._linhas_destino:
+            escolhida = linha["variavel"].get() == linha["valor"]
+            fundo = CORES["azul_claro"] if escolhida else CORES["cartao"]
+            borda = CORES["azul_medio"] if escolhida else CORES["cartao"]
+            linha["quadro"].configure(highlightbackground=borda)
+            for widget in linha["pintar"]:
+                widget.configure(bg=fundo)
+                if isinstance(widget, tk.Radiobutton):
+                    widget.configure(activebackground=fundo, selectcolor=fundo)
+
+    def _modo_mudou(self) -> None:
+        self._realcar_escolhas()
+        self._atualizar_habilitados()
+        if hasattr(self, "diagrama"):
+            self.diagrama.mostrar(self.var_alvo.get())
+
+    def _escolher_botao(self, _evento=None) -> None:
+        self.var_botao.set(dict(BOTOES)[self.combo_botao.get()])
+
+    # -- rodapé ----------------------------------------------------------
+
+    def _rodape(self) -> tk.Frame:
+        rodape = tk.Frame(self.root, bg=CORES["gelo"])
+
+        esquerda = tk.Frame(rodape, bg=CORES["gelo"])
+        esquerda.pack(side="left")
+        self.luz = tema.Indicador(esquerda, CORES["gelo"])
+        self.luz.pack(side="left", padx=(0, 6))
+        self.lbl_status = tk.Label(esquerda, textvariable=self.var_status,
+                                   font=self.fontes["botao"], bg=CORES["gelo"],
+                                   fg=CORES["texto"])
+        self.lbl_status.pack(side="left")
+        tk.Label(esquerda, textvariable=self.var_contador, font=self.fontes["normal"],
+                 bg=CORES["gelo"], fg=CORES["texto_suave"]).pack(side="left", padx=(12, 0))
+
+        self.btn_parar = tema.Botao(rodape, self.fontes, "PARAR", self.parar,
+                                    padx=18, pady=6, state="disabled")
+        self.btn_parar.pack(side="right")
+        self.btn_iniciar = tema.Botao(rodape, self.fontes, "INICIAR", self.iniciar,
+                                      principal=True, padx=22, pady=6)
+        self.btn_iniciar.pack(side="right", padx=(0, 8))
+        return rodape
 
     # ------------------------------------------------------------------
     # Estado da interface
@@ -224,11 +408,16 @@ class AutoClickerApp:
             pass
 
     def _atualizar_cps(self) -> None:
+        cps = None
         try:
             ms = int(self.var_intervalo.get())
-            self.var_cps.set(f"≈ {1000 / ms:.1f} cliques por segundo" if ms > 0 else "")
+            if ms > 0:
+                cps = 1000 / ms
         except (ValueError, ZeroDivisionError):
-            self.var_cps.set("")
+            cps = None
+        self.var_cps.set(f"≈ {cps:.1f} cliques por segundo" if cps else "")
+        if hasattr(self, "velocimetro"):
+            self.velocimetro.definir(cps)
 
     def _atualizar_habilitados(self) -> None:
         rodando = self.motor.running
@@ -241,6 +430,9 @@ class AutoClickerApp:
         self.ent_intervalo.configure(state=estado(modo == engine.MODE_CLICK))
         self.ent_variacao.configure(state=estado(modo == engine.MODE_CLICK))
         self.ent_periodico.configure(state=estado(modo == engine.MODE_HOLD_CLICK))
+        self.ent_duracao.configure(state=estado(True))
+        self.ent_limite.configure(state=estado(True))
+        self.combo_botao.configure(state="readonly" if not rodando else "disabled")
         self.combo_janelas.configure(
             state="readonly" if janela and not rodando else "disabled")
         for widget in (self.btn_atualizar, self.btn_centro, self.ent_x, self.ent_y,
@@ -249,9 +441,10 @@ class AutoClickerApp:
         self.btn_iniciar.configure(state="disabled" if rodando else "normal")
         self.btn_parar.configure(state="normal" if rodando else "disabled")
 
-    def _definir_status(self, texto: str, cor: str = "#333") -> None:
+    def _definir_status(self, texto: str, cor: str = CORES["texto"]) -> None:
         self.var_status.set(texto)
         self.lbl_status.configure(foreground=cor)
+        self.luz.definir(cor if cor != CORES["texto"] else CORES["texto_suave"])
 
     # ------------------------------------------------------------------
     # Janela alvo
@@ -261,9 +454,7 @@ class AutoClickerApp:
         if not winapi.IS_WINDOWS:
             return
         self.janelas = winapi.list_windows()
-        rotulos = [self._rotulo(j) for j in self.janelas]
-        self.combo_janelas.configure(values=rotulos)
-        # mantém selecionada a janela que já estava escolhida, se ainda existir
+        self.combo_janelas.configure(values=[self._rotulo(j) for j in self.janelas])
         for indice, janela in enumerate(self.janelas):
             if janela["hwnd"] == self.hwnd_alvo:
                 self.combo_janelas.current(indice)
@@ -271,15 +462,15 @@ class AutoClickerApp:
         if self.hwnd_alvo and not winapi.is_window(self.hwnd_alvo):
             self.hwnd_alvo = 0
             self.var_janela.set("")
-            self.var_detalhe_alvo.set("A janela que estava escolhida foi fechada.")
+            self.var_detalhe_alvo.set("A janela escolhida foi fechada.")
+            self._atualizar_mapa()
 
     @staticmethod
     def _rotulo(janela: dict) -> str:
         titulo = janela["title"]
-        if len(titulo) > 60:
-            titulo = titulo[:57] + "..."
-        processo = janela["process"] or "?"
-        return f"{processo} — {titulo}"
+        if len(titulo) > 52:
+            titulo = titulo[:49] + "..."
+        return f"{janela['process'] or '?'} — {titulo}"
 
     def _selecionar_janela_da_lista(self, _evento=None) -> None:
         indice = self.combo_janelas.current()
@@ -287,7 +478,8 @@ class AutoClickerApp:
             janela = self.janelas[indice]
             self.hwnd_alvo = janela["hwnd"]
             self.titulo_alvo = janela["title"]
-            if not self.var_x.get().strip() or (self.var_x.get() == "0" and self.var_y.get() == "0"):
+            if not self.var_x.get().strip() or (self.var_x.get() == "0"
+                                                and self.var_y.get() == "0"):
                 self._usar_centro()
             self._descrever_alvo()
 
@@ -300,7 +492,6 @@ class AutoClickerApp:
         self._descrever_alvo()
 
     def _capturar_ponto(self) -> None:
-        """Pega a janela embaixo do cursor e o ponto exato dentro dela."""
         if not winapi.IS_WINDOWS:
             return
         try:
@@ -309,7 +500,8 @@ class AutoClickerApp:
             messagebox.showerror("Auto Clicker", str(erro), parent=self.root)
             return
         if hwnd == self._proprio_hwnd():
-            self._definir_status("Isso é a janela do próprio Auto Clicker", "#b45309")
+            self._definir_status("Isso é a janela do próprio Auto Clicker",
+                                 CORES["ambar"])
             return
         self.hwnd_alvo = hwnd
         self.titulo_alvo = winapi.get_window_title(hwnd)
@@ -318,7 +510,7 @@ class AutoClickerApp:
         self.var_alvo.set(engine.TARGET_WINDOW)
         self._atualizar_lista_janelas()
         self._descrever_alvo()
-        self._definir_status("Ponto capturado", "#15803d")
+        self._definir_status("Ponto capturado", CORES["verde"])
 
     def _proprio_hwnd(self) -> int:
         try:
@@ -329,16 +521,32 @@ class AutoClickerApp:
     def _descrever_alvo(self) -> None:
         if not self.hwnd_alvo:
             self.var_detalhe_alvo.set("Nenhuma janela selecionada.")
+        else:
+            try:
+                alvo, _tx, _ty = winapi.resolve_click_target(
+                    self.hwnd_alvo, self._inteiro(self.var_x, "X"),
+                    self._inteiro(self.var_y, "Y"))
+                aviso = "\n⚠ a janela está minimizada" if winapi.is_minimized(
+                    self.hwnd_alvo) else ""
+                self.var_detalhe_alvo.set(
+                    f"recebe o clique:\n{winapi.get_class_name(alvo)}{aviso}")
+            except (ValueError, winapi.WinApiError) as erro:
+                self.var_detalhe_alvo.set(str(erro))
+        self._atualizar_mapa()
+
+    def _atualizar_mapa(self) -> None:
+        mapa = getattr(self, "mapa", None)
+        if mapa is None:
+            return
+        if not self.hwnd_alvo or not winapi.is_window(self.hwnd_alvo):
+            mapa.limpar("Escolha uma janela para ver onde o clique vai cair.")
             return
         try:
-            x, y = self._inteiro(self.var_x, "X"), self._inteiro(self.var_y, "Y")
-            alvo, _tx, _ty = winapi.resolve_click_target(self.hwnd_alvo, x, y)
-            classe = winapi.get_class_name(alvo)
-            aviso = "  ⚠ janela minimizada" if winapi.is_minimized(self.hwnd_alvo) else ""
-            self.var_detalhe_alvo.set(
-                f"Alvo: {self.titulo_alvo}\nControle que vai receber o clique: {classe}{aviso}")
-        except (ValueError, winapi.WinApiError) as erro:
-            self.var_detalhe_alvo.set(f"Alvo: {self.titulo_alvo}\n({erro})")
+            largura, altura = winapi.get_client_size(self.hwnd_alvo)
+            mapa.mostrar(largura, altura, self._inteiro(self.var_x, "X"),
+                         self._inteiro(self.var_y, "Y"), self.titulo_alvo)
+        except (ValueError, winapi.WinApiError):
+            mapa.limpar("Confira os valores de X e Y.")
 
     def _exigir_janela(self) -> bool:
         if not self.hwnd_alvo or not winapi.is_window(self.hwnd_alvo):
@@ -394,7 +602,8 @@ class AutoClickerApp:
                 return
         self.motor.start(ajustes)
         self.var_contador.set("Cliques: 0")
-        self._definir_status(engine.MODE_LABELS[ajustes.mode] + " rodando", "#15803d")
+        self._definir_status(engine.MODE_LABELS[ajustes.mode] + " rodando", CORES["verde"])
+        self.cabecalho.animar(True)
         self._atualizar_habilitados()
 
     def parar(self) -> None:
@@ -407,12 +616,12 @@ class AutoClickerApp:
     def _testar_clique(self) -> None:
         try:
             engine.single_click(self._coletar_configuracao())
-            self._definir_status("Clique de teste enviado", "#15803d")
+            self._definir_status("Clique de teste enviado", CORES["verde"])
         except (ValueError, winapi.WinApiError) as erro:
             messagebox.showerror("Auto Clicker", str(erro), parent=self.root)
 
     # ------------------------------------------------------------------
-    # Comunicação com as outras threads (tudo passa por uma fila)
+    # Conversa com as outras threads
     # ------------------------------------------------------------------
 
     def _contagem_da_thread(self, total: int) -> None:
@@ -432,16 +641,17 @@ class AutoClickerApp:
                     self.var_contador.set(f"Cliques: {evento[1]}")
                 elif evento[0] == "fim":
                     _, motivo, erro = evento
+                    self.cabecalho.animar(False)
                     if erro:
-                        self._definir_status("Erro", "#b91c1c")
+                        self._definir_status("Erro", CORES["vermelho"])
                         messagebox.showerror("Auto Clicker", erro, parent=self.root)
                     elif motivo == "limite":
-                        self._definir_status("Terminou (limite de cliques)", "#333")
+                        self._definir_status("Terminou (limite de cliques)")
                     else:
-                        self._definir_status("Parado", "#333")
+                        self._definir_status("Parado")
                     self._atualizar_habilitados()
                 elif evento[0] == "aviso":
-                    self._definir_status(evento[1], "#b45309")
+                    self._definir_status(evento[1], CORES["ambar"])
                 elif evento[0] == "alternar":
                     self.alternar()
                 elif evento[0] == "capturar":
@@ -458,7 +668,8 @@ class AutoClickerApp:
         iniciar = self.var_tecla_iniciar.get()
         capturar = self.var_tecla_capturar.get()
         if iniciar == capturar:
-            self._definir_status("Os dois atalhos não podem usar a mesma tecla", "#b45309")
+            self._definir_status("Os dois atalhos não podem usar a mesma tecla",
+                                 CORES["ambar"])
             return
         self.atalhos.set_hotkeys({
             iniciar: lambda: self.fila.put(("alternar",)),
@@ -493,13 +704,18 @@ class AutoClickerApp:
             "sempre_visivel": bool(self.var_topmost.get()),
         })
 
-    def _fechar(self) -> None:
+    def encerrar(self) -> None:
+        """Para tudo que roda fora da interface (threads, animação, agendamentos)."""
         self.motor.stop()
         self.atalhos.stop()
-        try:  # evita que a fila seja consultada depois da janela sumir
+        self.cabecalho.parar_animacao()
+        try:
             self.root.after_cancel(self._agendamento)
         except (tk.TclError, AttributeError):
             pass
+
+    def _fechar(self) -> None:
+        self.encerrar()
         self._salvar_configuracao()
         self.root.destroy()
 

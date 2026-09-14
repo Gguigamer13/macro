@@ -31,29 +31,38 @@ Não existem dependências externas: só a biblioteca padrão do Python
 
 ## Como usar
 
-### 1. O que o macro faz
+A janela é dividida em cinco abas, além do rodapé fixo com o botão de iniciar,
+a luz de status e o contador de cliques.
 
-Escolha o modo, o botão do mouse (esquerdo, direito ou meio) e os tempos:
+### Aba **Modo** — o que o macro faz
 
-- **Intervalo entre cliques** — em milissegundos; a tela mostra quantos cliques
-  por segundo aquilo dá (100 ms ≈ 10 cliques/s).
+As três opções aparecem como cartões; a escolhida fica destacada em azul bebê.
+Aqui também ficam o botão do mouse (esquerdo, direito ou meio) e o campo
+"Parar depois de N cliques" (0 = sem limite).
+
+### Aba **Tempos** — o ritmo
+
+- **Intervalo entre cliques** — em milissegundos. Logo abaixo, uma barra mostra
+  onde o seu ritmo cai, de "devagar" até "muito rápido", com a marcação em
+  cliques por segundo.
 - **Variação aleatória** — sorteia um pouco para mais ou para menos a cada
   clique, deixando o ritmo menos "robótico". 0% = sempre igual.
-- **Clicar a cada** — usado no modo "segurar + clique periódico": de quanto em
-  quanto tempo ele solta e aperta o botão de novo.
-- **Duração de cada clique** — quanto tempo o botão fica apertado em cada
-  clique. Alguns programas ignoram cliques rápidos demais; se for o seu caso,
-  aumente para 50–80 ms.
-- **Parar depois de N cliques** — deixe 0 para não ter limite.
+- **Clicar a cada** — no modo "segurar + clique periódico", de quanto em quanto
+  tempo ele solta e aperta o botão de novo.
+- **Duração de cada clique** — quanto tempo o botão fica apertado. Alguns
+  programas ignoram cliques rápidos demais; se for o seu caso, aumente para
+  50–80 ms.
 
-### 2. Onde os cliques vão cair
+### Aba **Destino** — onde os cliques vão cair
 
 - **Na posição atual do mouse** — o clique normal, igual a qualquer auto
   clicker: acontece onde o cursor estiver naquele momento.
-- **Em uma janela escolhida, em segundo plano** — é a opção que libera o seu
-  mouse. O clique é entregue direto para a janela alvo, sem mexer no cursor.
+- **Em uma janela, em segundo plano** — é a opção que libera o seu mouse. O
+  clique é entregue direto para a janela alvo, sem mexer no cursor.
 
-Para escolher a janela e o ponto:
+Um desenho ao lado das opções mostra a diferença entre as duas.
+
+### Aba **Janela** — qual janela e em que ponto
 
 - Selecione a janela na lista (ela mostra o programa e o título), ou
 - Passe o mouse por cima do ponto exato onde você quer clicar e aperte **F7**.
@@ -65,10 +74,12 @@ Os campos **X** e **Y** aceitam ajuste manual, "Usar o centro da janela"
 preenche o meio da área útil, e **"Testar 1 clique"** manda um único clique
 para conferir se a janela alvo aceita o comando antes de deixar o macro solto.
 
-Logo abaixo aparece o controle interno que vai receber o clique (por exemplo
-`Chrome_RenderWidgetHostHWND`) — é a confirmação de que o alvo foi encontrado.
+Um mini mapa desenha a janela alvo em escala, com uma mira no ponto exato em
+que o clique vai cair. Ao lado dos botões aparece o controle interno que vai
+receber o clique (por exemplo `Chrome_RenderWidgetHostHWND`) — é a confirmação
+de que o alvo foi encontrado.
 
-### 3. Atalhos do teclado
+### Aba **Atalhos**
 
 - **F6** — inicia e para (funciona mesmo com o jogo ou o navegador em primeiro
   plano; é assim que você para o modo "segurar" sem ficar com o botão travado).
@@ -77,10 +88,25 @@ Logo abaixo aparece o controle interno que vai receber o clique (por exemplo
 Dá para trocar as duas teclas nas caixas de seleção (F1–F12, Insert, Delete,
 Home, End, Page Up/Down, Scroll Lock, Pause, `*`, `-` e `+` do teclado
 numérico). Se alguma tecla já estiver sendo usada por outro programa, o
-Auto Clicker avisa e você escolhe outra.
+Auto Clicker avisa e você escolhe outra. Nesta aba também fica a opção de
+manter a janela sempre visível.
 
 Suas preferências são salvas automaticamente ao fechar, em
 `%APPDATA%\AutoClickerBR\config.json`.
+
+## Visual
+
+O tema é **branco gelo com azul bebê**, e todos os elementos gráficos são
+desenhados pelo próprio programa (Canvas do tkinter), sem imagens externas:
+
+- cabeçalho com degradê, logo do mouse e ondas de clique que se animam
+  enquanto o macro está rodando;
+- cartões com ícones desenhados (mouse, relógio, alvo, janela, teclado);
+- barra de ritmo em escala logarítmica na aba Tempos;
+- desenho comparando clique no cursor x clique em segundo plano;
+- mini mapa da janela alvo com a mira no ponto do clique;
+- luz de status no rodapé (cinza parado, verde rodando, vermelho em erro);
+- marca d'água **powered by nova era** no rodapé.
 
 ## Quando o clique em segundo plano não funciona
 
@@ -108,8 +134,10 @@ casos está, em dois segundos, sem precisar adivinhar.
 ## Rodando os testes
 
 Os testes cobrem o motor de cliques (os três modos, o limite, a parada e a
-garantia de que o botão nunca fica preso pressionado). Eles usam um dublê no
-lugar do mouse, então rodam em qualquer sistema:
+garantia de que o botão nunca fica preso pressionado) e a interface (montagem
+da janela, campos que ligam e desligam conforme o modo, avisos de erro e o
+ciclo iniciar/parar pelo atalho). Eles usam dublês no lugar do mouse e do
+teclado, então rodam sem clicar nada:
 
 ```cmd
 python -m unittest discover -s testes -v
@@ -123,7 +151,9 @@ autoclicker/
   engine.py    motor de cliques: os três modos, rodando em uma thread
   hotkeys.py   atalhos globais de teclado
   config.py    salvar/carregar preferências
-  gui.py       interface em tkinter
+  tema.py      paleta, estilos e os elementos gráficos desenhados
+  gui.py       interface em tkinter: as cinco abas e o rodapé
 testes/
-  test_engine.py
+  test_engine.py   os três modos, o limite e a parada
+  test_gui.py      montagem da janela, campos, atalhos e o ciclo completo
 ```

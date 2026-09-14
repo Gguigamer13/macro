@@ -73,11 +73,7 @@ class TesteInterface(unittest.TestCase):
         self.app = gui.AutoClickerApp(self.root)
 
     def tearDown(self):
-        self.app.motor.stop()
-        try:
-            self.root.after_cancel(self.app._agendamento)
-        except Exception:
-            pass
+        self.app.encerrar()
         (gui.HotkeyListener, gui.messagebox.showerror, gui.messagebox.showwarning,
          gui.messagebox.askyesno, engine.build_sender, config.salvar,
          config.carregar) = self._originais
